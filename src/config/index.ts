@@ -381,43 +381,43 @@ function getTableProperties(attribute: Props, useLanguage: UseLanguageHandler) {
           }
         ]
       },
-      {
-        content: useLanguage('dimsAlm'),
-        children: [
-          {
-            category: 'input',
-            propertyName: 'width',
-            value: convertUnitToInteger(attribute['width']),
-            attribute: {
-              type: 'text',
-              placeholder: useLanguage('width')
-            },
-            valid: isValidDimensions,
-            message: useLanguage('dimsMsg')
-          },
-          {
-            category: 'input',
-            propertyName: 'height',
-            value: convertUnitToInteger(attribute['height']),
-            attribute: {
-              type: 'text',
-              placeholder: useLanguage('height')
-            },
-            valid: isValidDimensions,
-            message: useLanguage('dimsMsg')
-          },
-          {
-            category: 'menus',
-            propertyName: 'align',
-            value: attribute['align'],
-            menus: [
-              { icon: alignLeftIcon, describe: useLanguage('alTblL'), align: 'left' },
-              { icon: alignCenterIcon, describe: useLanguage('tblC'), align: 'center' },
-              { icon: alignRightIcon, describe: useLanguage('alTblR'), align: 'right' }
-            ]
-          }
-        ]
-      }
+      // {
+      //   content: useLanguage('dimsAlm'),
+      //   children: [
+      //     {
+      //       category: 'input',
+      //       propertyName: 'width',
+      //       value: convertUnitToInteger(attribute['width']),
+      //       attribute: {
+      //         type: 'text',
+      //         placeholder: useLanguage('width')
+      //       },
+      //       valid: isValidDimensions,
+      //       message: useLanguage('dimsMsg')
+      //     },
+      //     {
+      //       category: 'input',
+      //       propertyName: 'height',
+      //       value: convertUnitToInteger(attribute['height']),
+      //       attribute: {
+      //         type: 'text',
+      //         placeholder: useLanguage('height')
+      //       },
+      //       valid: isValidDimensions,
+      //       message: useLanguage('dimsMsg')
+      //     },
+      //     {
+      //       category: 'menus',
+      //       propertyName: 'align',
+      //       value: attribute['align'],
+      //       menus: [
+      //         { icon: alignLeftIcon, describe: useLanguage('alTblL'), align: 'left' },
+      //         { icon: alignCenterIcon, describe: useLanguage('tblC'), align: 'center' },
+      //         { icon: alignRightIcon, describe: useLanguage('alTblR'), align: 'right' }
+      //       ]
+      //     }
+      //   ]
+      // }
     ]
   };
 }

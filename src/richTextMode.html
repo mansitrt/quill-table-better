@@ -1,0 +1,2913 @@
+<!-- Style -->
+<link href="https://fonts.googleapis.com/css?family=Roboto" rel="stylesheet">
+<style>
+  #toolbar {
+    padding: 10px;
+    background-color: white;
+    border-bottom: 1px solid #ccc;
+  }
+
+  #editor {
+    border: 1px solid #ccc;
+    overflow-y: auto;
+    height: calc(100vh - 10px);
+
+  }
+
+  /*  overflow: auto;*/
+  #editor-container {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid #ccc;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .ql-container {
+    border: 1px solid transparent !important;
+    overflow-y: visible !important;
+  }
+
+  .ql-container.ql-snow {
+    border: 1px solid transparent !important;
+    overflow-y: visible !important;
+
+  }
+
+  .ql-editor.ql-blank:focus::before {
+    content: '';
+  }
+
+  /* Set content font-families */
+  .ql-font-Helvetica {
+    font-family: "Helvetica";
+  }
+
+  .ql-font-AppleChancery {
+    font-family: "Apple-Chancery";
+  }
+
+  .ql-font-Papyrus {
+    font-family: "Papyrus";
+  }
+
+  .ql-font-Rockwell {
+    font-family: "Rockwell";
+  }
+
+  .ql-font-Optima {
+    font-family: "Optima";
+  }
+
+  .ql-font-Georgia {
+    font-family: "Georgia";
+  }
+
+  .ql-font-TimesNewRoman {
+    font-family: "Times-New-Roman";
+  }
+
+  .ql-font-AndaleMono {
+    font-family: "Andale-Mono";
+  }
+
+  .ql-font-CourierNew {
+    font-family: "Courier-New";
+  }
+
+  .ql-font-Monaco {
+    font-family: "Monaco";
+  }
+
+  .ql-font-Menlo {
+    font-family: "Menlo";
+  }
+
+  #fontSelect .ql-picker-options .ql-picker-item.selected {
+    color: #06c;
+  }
+
+  #sizeSelect .ql-picker-options .ql-picker-item.selected {
+    color: #06c;
+  }
+
+  #alignSelect .ql-picker-options .ql-picker-item.selected .ql-stroke {
+    stroke: #06c;
+  }
+
+  #alignSelect .ql-picker-options .ql-picker-item.selected {
+    color: #06c;
+  }
+
+  .ql-color .ql-picker-options .ql-picker-item.selected {
+    border: 2px solid #000;
+  }
+
+  .ql-background .ql-picker-options .ql-picker-item.selected {
+    border: 2px solid #000;
+  }
+
+
+
+  /* We do not set Sans Serif since it is the default font */
+</style>
+
+<!-- Include Quill stylesheet -->
+<!--  <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet" />-->
+<link href="quill.snow.css" rel="stylesheet" />
+<link href="quill.min.css" rel="stylesheet" />
+
+
+<link href="quill-table-better.css" rel="stylesheet" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<script src="quill.js"></script>
+<script src="jquery-s.1.4.min.js"></script>
+<!-- <script src="quill.min.js"></script> -->
+
+
+<script src="quill-table-better.js"></script>
+<!-- Create the toolbar container -->
+
+<!-- Create the editor container -->
+<div id="editor-container" class="editor-container">
+  <div id="toolbar">
+    <span class="ql-formats">
+      <select class="ql-font" id="fontSelect">
+        <option value="Helvetica">Helvetica</option>
+        <option value="TimesNewRoman">Times New Roman</option>
+        <option value="AppleChancery">Apple Chancery</option>
+        <option value="Papyrus">Papyrus</option>
+        <option value="Rockwell">Rockwell</option>
+        <option value="Optima">Optima</option>
+        <option value="Georgia">Georgia</option>
+        <option value="CourierNew">Courier New</option>
+        <option value="Monaco">Monaco</option>
+        <option value="Menlo">Menlo</option>
+        <option value="AndaleMono">Andale Mono</option>
+      </select>
+    </span>
+    <span class="ql-format-seperator"></span>
+    <span class="ql-formats">
+      <select class="ql-size" id="sizeSelect">
+        <option value="10pt">10pts</option>
+        <option value="11pt">11pts</option>
+        <option value="12pt">12pts</option>
+        <option value="14pt">14pts</option>
+        <option value="16pt">16pts</option>
+        <option value="18pt">18pts</option>
+        <option value="20pt">20pts</option>
+        <option value="24pt">24pts</option>
+        <option value="28pt">28pts</option>
+        <option value="36pt" id="fontSize36">36pts</option>
+      </select>
+      <button id="insert-table">
+        <?xml version="1.0"
+        encoding="utf-8"?><!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+        <svg width="auto" height="auto" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path
+            d="M4 12L20 12M12 4L12 20M6.2 20H17.8C18.9201 20 19.4802 20 19.908 19.782C20.2843 19.5903 20.5903 19.2843 20.782 18.908C21 18.4802 21 17.9201 21 16.8V7.2C21 6.0799 21 5.51984 20.782 5.09202C20.5903 4.71569 20.2843 4.40973 19.908 4.21799C19.4802 4 18.9201 4 17.8 4H6.2C5.0799 4 4.51984 4 4.09202 4.21799C3.71569 4.40973 3.40973 4.71569 3.21799 5.09202C3 5.51984 3 6.07989 3 7.2V16.8C3 17.9201 3 18.4802 3.21799 18.908C3.40973 19.2843 3.71569 19.5903 4.09202 19.782C4.51984 20 5.07989 20 6.2 20Z"
+            stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </button>
+    </span>
+    <span class="ql-formats">
+      <button class="ql-bold"></button>
+      <button class="ql-italic"></button>
+      <button class="ql-underline"></button>
+      <button class="ql-strike"></button>
+    </span>
+    <span class="ql-format-seperator" style="margin-left:-4px;"></span>
+    <span class="ql-formats">
+      <select class="ql-color" id="custom-color-picker">
+        <option value="#FF0000" style="background-color: #FF0000;">Red</option>
+        <option value="#FFFF00" style="background-color: #FFFF00;">Yellow</option>
+        <option value="#008000" style="background-color: #008000;">Green</option>
+        <option value="#0000FF" style="background-color: #0000FF;">Blue</option>
+        <option value="#FFA500" style="background-color: #FFA500;">Orange</option>
+        <option value="#800080" style="background-color: #800080;">Purple</option>
+        <option value="#A52A2A" style="background-color: #A52A2A;">Brown</option>
+        <option value="#000000" style="background-color: #000000;">Black</option>
+        <option value="#808080" style="background-color: #808080;">Gray</option>
+        <option value="#A9A9A9" style="background-color: #A9A9A9;">Light Gray</option>
+        <option value="#FFFFFF" style="background-color: #FFFFFF;">White</option>
+        <option value="#1E97F3" style="background-color: #1E97F3;">Light Blue</option>
+        <option value="#1FD655" style="background-color: #1FD655;">Light Green</option>
+        <option value="#FF8DA1" style="background-color: #FF8DA1;">Pink</option>
+        <option value="#FF8B3D" style="background-color: #FF8B3D;">Light Orange</option>
+      </select>
+      <select class="ql-background" id="custom-background-picker">
+        <option value="#FF0000" style="background-color: #FF0000;">Red</option>
+        <option value="#FFFF00" style="background-color: #FFFF00;">Yellow</option>
+        <option value="#008000" style="background-color: #008000;">Green</option>
+        <option value="#0000FF" style="background-color: #0000FF;">Blue</option>
+        <option value="#FFA500" style="background-color: #FFA500;">Orange</option>
+        <option value="#800080" style="background-color: #800080;">Purple</option>
+        <option value="#A52A2A" style="background-color: #A52A2A;">Brown</option>
+        <option value="#000000" style="background-color: #000000;">Black</option>
+        <option value="#808080" style="background-color: #808080;">Gray</option>
+        <option value="#A9A9A9" style="background-color: #A9A9A9;">Light Gray</option>
+        <option value="#FFFFFF" style="background-color: #FFFFFF;">White</option>
+        <option value="#1E97F3" style="background-color: #1E97F3;">Light Blue</option>
+        <option value="#1FD655" style="background-color: #1FD655;">Light Green</option>
+        <option value="#FF8DA1" style="background-color: #FF8DA1;">Pink</option>
+        <option value="#FF8B3D" style="background-color: #FF8B3D;">Light Orange</option>
+      </select>
+    </span>
+    <span class="ql-format-seperator"></span>
+    <span class="ql-formats">
+      <button class="ql-list" value="ordered"></button>
+      <button class="ql-list" value="bullet"></button>
+      <select class="ql-align" id="alignSelect">
+        <option label="left" class="selected"></option>
+        <option label="center" value="center"></option>
+        <option label="right" value="right"></option>
+        <option label="justify" value="justify"></option>
+      </select>
+    </span>
+
+    <!--          <span class="ql-formats">-->
+    <!--            <button class="ql-link"></button>-->
+    <!--            <button class="ql-image"></button>-->
+    <!--            <button class="ql-video"></button>-->
+    <!--          </span>-->
+    <!--          <span class="ql-formats">-->
+    <!--            <button class="ql-formula"></button>-->
+    <!--            <button class="ql-code-block"></button>-->
+    <!--          </span>-->
+    <!--      <span class="ql-formats">-->
+    <!--        <button class="ql-script" value="sub"></button>-->
+    <!--        <button class="ql-script" value="super"></button>-->
+    <!--      </span>-->
+    <!--      <span class="ql-formats">-->
+    <!--        <button class="ql-clean"></button>-->
+    <!--      </span>-->
+  </div>
+  <div id="editor">
+    <p><span id="firstElement" class><span></p>
+  </div>
+</div>
+
+
+<script>
+  var placeHolderLanguage = 'Enter note content here';
+  var keyboardHeight = 0;
+  var isTabToEdit = null;
+  var isPlanNote = false;
+  var isKeyboardOperation = false;
+  var belowContentHeight = 0;
+  let defaultFormats = { font: '', size: '' };
+  let lastFormats = {};
+  let deviceType = '';
+  let cursorIndex;
+  // Add fonts to whitelist
+  let Font = Quill.import('formats/font');
+  // We do not add Sans Serif since it is the default
+  Font.whitelist = [
+    'TimesNewRoman',
+    'Helvetica',
+    'AppleChancery',
+    'Papyrus',
+    'Rockwell',
+    'Optima',
+    'Georgia',
+    'AndaleMono',
+    'CourierNew',
+    'Monaco',
+    'Menlo'
+  ];
+  Quill.register(Font, true);
+
+  var Size = Quill.import('attributors/style/size');
+  Size.whitelist = [
+    '10pt',
+    '11pt',
+    '12pt',
+    '14pt',
+    '16pt',
+    '18pt',
+    '20pt',
+    '24pt',
+    '28pt',
+    '36pt',
+  ];
+  Quill.register(Size, true);
+
+  // // set the default font size
+  // const sizeSelect = document.getElementById('sizeSelect');
+  // sizeSelect.value = '14px';
+
+  // // set the default font name
+  // const fontSelect = document.getElementById('fontSelect');
+  // fontSelect.value = 'Optima';
+  Quill.register({
+  'modules/table-better': QuillTableBetter
+}, true);
+
+  var snow = new Quill('#editor', {
+    theme: 'snow',
+    placeholder: `${placeHolderLanguage}`,
+    modules: {
+        table: false,
+              'table-better': {
+                toolbarTable: true,
+                menus: ['column', 'row', 'table',  'wrap', 'delete'],
+               },
+              toolbar: '#toolbar',
+    },
+    keyboard: {
+          bindings: QuillTableBetter.keyboardBindings
+    }
+  });
+
+
+
+  const table = snow.getModule('table-better');
+  const editorContainer = document.getElementById('editor-container');
+  const editor = document.getElementById('editor');
+
+  document
+    .querySelector('#insert-table').addEventListener('click', function () {
+      setTimeout(() => {
+      const focusContainer = document.querySelector('.ql-editor');
+        if (focusContainer) focusContainer.focus();
+        // Center cursor after picker selection
+        const selection = snow.getSelection();
+        if (selection) {
+         scrollToCursorPosition({ index: selection.index }, { centerCursor: true, forceScroll: true });
+        }
+      }, 100); // A brief timeout seems necessary to let picker close first
+      table.insertTable(3, 3);
+      setTimeout(() => {
+        const tables = document.querySelectorAll('.ql-editor table');
+        if (tables.length) {
+          const lastTable = tables[tables.length - 1];
+          if (lastTable) {
+            const cells = lastTable.querySelectorAll('td');
+            // Get the first cell's blot for cursor positioning
+            const firstCellBlot = Quill.find(cells[0]);
+            const firstCellIndex = firstCellBlot ? snow.getIndex(firstCellBlot) : null;
+            // Apply formats to all cells
+            cells.forEach((cell, index) => {
+              applyFormatOnEmptyCell(cell, index === 0);
+            });
+
+            // Set cursor to first cell
+            if (firstCellIndex !== null) {
+              snow.setSelection(firstCellIndex, 0);
+            }
+          }
+        }
+      }, 50);
+    });
+
+  // Called each time when text changes in the editor
+  const toolbar = document.getElementById('toolbar');
+  const toolbarWrapper = document.getElementById('toolbarWrapper');
+
+  let editorHeight = document.getElementById('editor').offsetHeight;
+
+  let lastSelectedFormats = {};  // Store the last selected formats globally
+  let savedRange = null;
+  let lastKnownRange = null; // Always track the latest selection
+
+  let previousSelectedFormat = {};
+
+  const selection = () => {
+    if (window.getSelection) return window.getSelection();
+  };
+
+  //color and background picker element
+  const colorPicker = document.getElementById("custom-color-picker");
+  const backgroundPicker = document.getElementById("custom-background-picker");
+
+  //label element
+  const bgColorPicker = document.querySelector('.ql-background .ql-picker-label');
+  const textColorPicker = document.querySelector('.ql-color .ql-picker-label');
+
+  //label's inner element
+  const colorLabel = textColorPicker?.querySelector('line.ql-stroke');
+  const backgroundLabel = bgColorPicker?.querySelector('g.ql-fill');
+
+  let lastFormat = {}; // Store the last format applied
+  let currentFormat = {};
+  snow.on('selection-change', function (range) {
+      
+    // applyStylesToListElements(snow);
+    // Get the current format at the selection index
+    if (range) {
+      const currentFormats = snow.getFormat(range);
+      lastSelectedFormats = currentFormats || {};
+      lastKnownRange = range;
+
+      if (range.start == range.end) {
+        // window.webkit.messageHandlers.callbackHandler.postMessage(
+        //   `Toolbar_Visible`,
+        // );
+      }
+      const format = snow.getFormat(range.index);
+      lastFormat = format;
+      window.lastUsedFormat = format;
+      updateToolbarUI(format);
+
+      const formats = snow.getFormat(range.index, range.length);
+      if (Object.keys(formats).length > 0) {
+        lastUsedFormats = { ...formats };
+      }
+      //setTimeout(() => ensureCursorVisible(), 10);
+      //const [leaf, offset] = snow.getLeaf(range.index);
+      //  if (leaf) {
+      // currentFormat = snow.getFormat(range.index);
+      // }
+    }
+    else {
+      document.activeElement.blur();
+    }
+  });
+
+
+  snow.on('text-change', function (delta, source) {
+    // Use the new function for Enter key processing
+    // formatEmptyLinesAfterEnter(delta, snow, lastSelectedFormats);
+    sendContentToNativeApp();
+    //applyStylesToListElements(snow);
+    // Get the current format at the selection index
+    const currentFormats = snow.getFormat();
+    // Update lastSelectedFormats if any format is active
+    lastSelectedFormats = { ...lastSelectedFormats, ...currentFormats };
+    const range = snow.getSelection();
+    if (range) {
+      const formats = snow.getFormat(range.index);
+      // If user is typing in a new empty block, reapply last format
+      // if (Object.keys(format).length === 0 && Object.keys(lastFormat).length > 0) {
+      //   snow.formatText(range.index, 1, lastFormat);
+      // }
+      updateToolbarUI(formats);
+
+      // Update button states based on selection format
+      const boldBtn = document.querySelector('.ql-bold');
+      if (boldBtn) boldBtn.classList.toggle('ql-active', formats.bold === true);
+
+      const italicBtn = document.querySelector('.ql-italic');
+      if (italicBtn) italicBtn.classList.toggle('ql-active', formats.italic === true);
+
+      const underlineBtn = document.querySelector('.ql-underline');
+      if (underlineBtn) underlineBtn.classList.toggle('ql-active', formats.underline === true);
+
+      const strikeBtn = document.querySelector('.ql-strike');
+      if (strikeBtn) strikeBtn.classList.toggle('ql-active', formats.strike === true);
+    }
+  });
+
+
+
+  snow.root.addEventListener('click', function (event) {
+    const selection = snow.getSelection();
+    console.log("selection", selection);
+    if (!selection) return;
+    setTimeout(() => {
+      handleEmptyLineClick(snow, selection.index);
+    }, 20);
+  });
+    
+    // Add touchend event which is more reliable on iOS
+    snow.root.addEventListener('touchend', function (event) {
+      // Prevent default to avoid any iOS quirks
+      //  event.preventDefault();
+      
+      // Small delay to ensure selection is updated
+      setTimeout(() => {
+        const selection = snow.getSelection();
+        console.log("touchend selection", selection);
+        if (!selection) return;
+        handleEmptyLineClick(snow, selection.index);
+      }, 20); // Slightly longer timeout for iOS
+    });
+
+
+
+
+  editor.addEventListener('click', (event) => {
+    const clickElement = event.target;
+    const elementInfo = {
+      tagName: clickElement.tagName,
+      id: clickElement.id || 'none',
+      className: clickElement.className || 'none',
+      textContent: clickElement.textContent.trim().substring(0, 50) +
+        (clickElement.textContent.trim().length > 50 ? '...' : ''),
+      attributes: Array.from(clickElement.attributes).map(attr => ({
+        name: attr.name,
+        value: attr.value
+      })),
+      boundingRect: clickElement.getBoundingClientRect()
+    };
+    console.log('Element clicked:', elementInfo);
+    const selection = snow.getSelection();
+
+    setTimeout(() => {
+      // Option 1: Scroll directly
+      clickElement.scrollIntoView({
+        behavior: 'smooth', // or 'auto'
+        block: 'center',   // 'start', 'center', 'end', or 'nearest'
+      });
+    }, 300);
+    
+  //  scrollToCursorPosition({ index: selection.index }, { centerCursor: true, forceScroll: true } )
+
+  });
+
+
+
+  function getQuillHtml() { return snow.root.innerHTML; }
+
+  function sendContentToNativeApp() {
+    try {
+      let html = getQuillHtml();
+      // Remove empty lines at the end of the document
+      //     html = removeTrailingEmptyLines(html);
+      // Replace <p><br></p> with &nbsp
+      html = html.replace(/<br\s*\/?>/g, '&nbsp;');
+
+      window.webkit.messageHandlers.callbackHandler.postMessage(html);
+    } catch (err) {
+      console.log('The native context does not exist yet');
+    }
+  }
+
+  // document.querySelector('.ql-editor').addEventListener('mousedown', function (event) {
+  //   const targetCell = event.target.closest('td');
+  //   if (targetCell) {
+  //     setTimeout(() => {
+  //       applyFormatOnEmptyCell(targetCell);
+  //     }, 0);
+  //   }
+  // });
+
+  snow.root.addEventListener('mousedown', function (event) {
+    let range = snow.getSelection();
+    if (!range) return;
+
+    let [line, offset] = snow.getLine(range.index);
+
+    // Ensure clicking at the start allows cursor placement at index 0
+    if (line && line.statics.blotName === 'list' && offset === 0) {
+      setTimeout(() => {
+        snow.setSelection(range.index, 0);
+      }, 0);
+    }
+  });
+
+
+
+  document.addEventListener('scroll', (event) => {
+    window.scrollTo(0, 0);
+  });
+
+  document.querySelectorAll('.ql-picker-item').forEach((item) => {
+    if (!item[0]?.hasAttribute('data-value')) {
+      item[0]?.setAttribute('data-value', '#000000'); // Assign black color value
+    }
+    if (!item.hasAttribute('data-value')) {
+      item.setAttribute('data-value', '#fffff'); // Assign black color value
+    }
+  });
+
+  // Function to update the color picker UI
+  function updateToolbar(format) {
+    if (format.color) {
+      if (colorLabel) colorLabel.style.stroke = format.color; // Update stroke color
+      textColorPicker.classList.add("ql-active"); // Keep active class
+      // Get all color picker items
+      let colorItems = document.querySelectorAll(".ql-color .ql-picker-item");
+      colorItems.forEach(item => {
+        let itemColor = item.getAttribute("data-value"); // Get item color
+        // If the item's color matches the selected color, apply the selected class
+        if (itemColor === format.color) {
+          item.classList.add("selected");
+        }
+      });
+    }
+
+    if (format.background) {
+      if (backgroundLabel) backgroundLabel.style.fill = format.background;
+      bgColorPicker.classList.add("ql-active");
+      // Get all color picker items
+      let colorItems = document.querySelectorAll(".ql-color .ql-picker-item");
+      colorItems.forEach(item => {
+        let itemColor = item.getAttribute("data-value"); // Get item color
+        // If the item's color matches the selected color, apply the selected class
+        if (itemColor === format.color) {
+          item.classList.add("selected");
+        }
+      });
+    }
+  }
+
+
+
+  // Updated function to update toolbar UI based on active formats
+  function updateToolbarUI(formats) {
+    console.log('Updating toolbar UI with formats:', formats);
+    if(formats === '{}'){
+        formats = {
+            font: snow.defaultFormats.font,
+            size: snow.defaultFormats.size
+        }
+    }
+    
+    console.log("mau formats updated:-> ", formats);
+
+    // Update button states for basic formats (bold, italic, underline, strike)
+    const formatButtons = {
+      bold: document.querySelector('.ql-bold'),
+      italic: document.querySelector('.ql-italic'),
+      underline: document.querySelector('.ql-underline'),
+      strike: document.querySelector('.ql-strike')
+    };
+
+    // Update basic format buttons
+    Object.keys(formatButtons).forEach(format => {
+      if (formatButtons[format]) {
+        // For boolean formats like bold, check if the format is true
+        if (formats[format] === true) {
+          formatButtons[format].classList.add('ql-active');
+          console.log(`Adding ql-active to ${format} button`);
+        } else {
+          formatButtons[format].classList.remove('ql-active');
+          console.log(`Removing ql-active from ${format} button`);
+        }
+      }
+    });
+
+    // Update color pickers if needed
+    if (formats.color && colorLabel) {
+      colorLabel.style.stroke = formats.color;
+      textColorPicker.classList.add('ql-active');
+    }
+
+    if (formats.background && backgroundLabel) {
+      backgroundLabel.style.fill = formats.background;
+      bgColorPicker.classList.add('ql-active');
+    }
+
+    // Update font picker
+    if (formats.font) {
+      const fontValue = document.querySelector('.ql-font .ql-picker-label');
+      if (fontValue) {
+        fontValue.setAttribute('data-value', formats.font);
+        fontValue.setAttribute('aria-label', formats.font);
+        fontValue.classList.add('ql-active');
+      }
+    }
+
+    // Update size picker
+    if (formats.size) {
+
+      const sizeValue = document.querySelector('.ql-size .ql-picker-label');
+      if (sizeValue) {
+        sizeValue.setAttribute('data-value', `${formats.size}`);
+        sizeValue.setAttribute('aria-label', `${formats.size}s`);
+        sizeValue.classList.add('ql-active');
+      }
+    }
+
+    // Update alignment buttons
+    if (formats.align) {
+      const alignButtons = document.querySelectorAll('.ql-align');
+      alignButtons.forEach(button => {
+        button.classList.remove('ql-active');
+      });
+
+      const activeAlignButton = document.querySelector(`.ql-align[value="${formats.align}"]`);
+      if (activeAlignButton) {
+        activeAlignButton.classList.add('ql-active');
+      }
+    }
+  }
+
+  // Enhanced mobile font & size picker handling
+  // This prevents context menu interference on iOS/iPadOS
+  (function setupMobilePickerHandlers() {
+    // Store active state
+    window.activePickerTouch = false;
+    // Get references to font and size pickers
+    const fontPicker = document.querySelector('.ql-font');
+    const sizePicker = document.querySelector('.ql-size');
+    const fontPickerLabel = document.querySelector('.ql-font .ql-picker-label');
+    const sizePickerLabel = document.querySelector('.ql-size .ql-picker-label');
+    // Handle font family selection properly
+    function handleFontSelection(event) {
+      // Find the selected item
+      const selectedFontItem = event.target.closest('.ql-picker-item');
+      if (!selectedFontItem) return;
+      // Prevent default behavior to avoid context menu
+      event.preventDefault();
+      event.stopPropagation();
+      // Get the selected font value
+      const selectedFont = selectedFontItem.getAttribute('data-value');
+      if (!selectedFont) return;
+      // Get current selection
+      const range = snow.getSelection();
+      if (!range) return;
+      // Store selection details
+      const index = range.index;
+      const length = range.length;
+      // Get current formats to preserve them
+      const formats = snow.getFormat(range.index, Math.max(1, range.length));
+      // Apply formatting
+      if (length > 0) {
+        snow.formatText(index, length, {
+          ...formats,
+          font: selectedFont
+        }, 'api');
+      } else {
+        snow.format('font', selectedFont, 'api');
+      }
+      // Update UI
+      document.querySelectorAll(".ql-picker-item").forEach(item => {
+        item.classList.remove("ql-selected");
+      });
+      selectedFontItem.classList.add("ql-selected");
+      fontPickerLabel.classList.add("ql-active");
+      fontPicker.classList.remove("ql-expanded");
+      // **Fix: Temporarily blur and refocus the editor**
+      snow.blur(); // Blur first
+      snow.focus(); // Refocus after ensuring blur has applied
+      snow.setSelection(index, length); // Restore selection
+    }
+    // Handle font family selection properly
+    function handleSizeSelection(event) {
+      // Find the selected item
+      const selectedSizeItem = event.target.closest('.ql-picker-item');
+      if (!selectedSizeItem) return;
+      // Prevent default behavior to avoid context menu
+      event.preventDefault();
+      event.stopPropagation();
+      // Get the selected font value
+      const selectedSize = selectedSizeItem.getAttribute('data-value');
+      if (!selectedSize) return;
+      // Get current selection
+      const range = snow.getSelection();
+      if (!range) return;
+      // Store selection details
+      const index = range.index;
+      const length = range.length;
+      // Get current formats to preserve them
+      const formats = snow.getFormat(range.index, Math.max(1, range.length));
+      // Apply formatting
+      if (length > 0) {
+        snow.formatText(index, length, {
+          ...formats,
+          size: selectedSize
+        }, 'api');
+      } else {
+        snow.format('size', selectedSize, 'api');
+      }
+      // Update UI
+      document.querySelectorAll(".ql-picker-item").forEach(item => {
+        item.classList.remove("ql-selected");
+      });
+      selectedSizeItem.classList.add("ql-selected");
+      sizePickerLabel.classList.add("ql-active");
+      sizePicker.classList.remove("ql-expanded");
+      // **Fix: Temporarily blur and refocus the editor**
+      snow.blur(); // Blur first
+      snow.focus(); // Refocus after ensuring blur has applied
+      snow.setSelection(index, length); // Restore selection
+      // Update toolbar to reflect changes
+      updateToolbarUI(snow.getFormat(index, length));
+      
+      // Check if list format is active and update list item styling if needed
+       
+          
+    }
+    // Set up event listeners for font picker
+    if (fontPicker) {
+      // Prevent default touch behaviors
+      fontPicker.addEventListener('touchstart', (e) => {
+        if (e.target.closest('.ql-picker-item')) {
+          e.preventDefault();
+          e.stopPropagation();
+          window.activePickerTouch = true;
+        }
+      }, { passive: false });
+      fontPicker.addEventListener('touchmove', (e) => {
+        if (e.target.closest('.ql-picker-item')) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }, { passive: false });
+      // Add our handler for touch and click
+      fontPicker.addEventListener('touchend', handleFontSelection);
+      fontPicker.addEventListener('click', handleFontSelection);
+      // Handle the picker label
+      const fontLabel = fontPicker.querySelector('.ql-picker-label');
+      if (fontLabel) {
+        fontLabel.addEventListener('touchstart', function (e) {
+          window.activePickerTouch = true;
+          console.log('Font picker label touched');
+          // Reset the flag after a reasonable time
+          setTimeout(() => {
+            window.activePickerTouch = false;
+          }, 1000);
+        });
+      }
+    }
+    // Keep using the original mobile picker code just for size picker
+    if (sizePicker) {
+      const pickerLabel = sizePicker.querySelector('.ql-picker-label');
+      if (!pickerLabel) return;
+      // When user taps on the picker label
+      pickerLabel.addEventListener('touchstart', function (e) {
+        // Set active state to help us track interactions
+        window.activePickerTouch = true;
+        window.lastTouchedPicker = sizePicker;
+        // Don't prevent default here - we want the normal dropdown behavior
+        console.log(`Touch on ${sizePicker.className}`);
+        // We'll reset the flag after a reasonable time
+        setTimeout(() => {
+          window.activePickerTouch = false;
+        }, 1000);
+      });
+      // Handle taps on the size dropdown options
+      sizePicker.addEventListener('touchstart', (e) => {
+        if (e.target.closest('.ql-picker-item')) {
+          e.preventDefault();
+          e.stopPropagation();
+          window.activePickerTouch = true;
+        }
+      }, { passive: false });
+      sizePicker.addEventListener('touchmove', (e) => {
+        if (e.target.closest('.ql-picker-item')) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }, { passive: false });
+      // Add our handler for touch and click
+      sizePicker.addEventListener('touchend', handleSizeSelection);
+      sizePicker.addEventListener('click', handleSizeSelection);
+    }
+    // Global context menu handler that only prevents when needed
+    document.addEventListener('contextmenu', function (e) {
+      // Check if we're currently interacting with a picker
+      if (window.activePickerTouch) {
+        console.log('Preventing context menu during picker interaction');
+        e.preventDefault();
+        return false;
+      }
+      // Also prevent if clicking inside any expanded picker
+      const expandedPicker = e.target.closest('.ql-picker.ql-expanded');
+      if (expandedPicker) {
+        console.log('Preventing context menu in expanded picker');
+        e.preventDefault();
+        return false;
+      }
+    }, true); // Use capture phase for early interception
+  })();
+
+
+  // Color picker handler
+  function handleColorSelection(event) {
+
+    const selectedItem = event.target.closest('.ql-picker-item');
+    if (!selectedItem) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    const selectedColor = selectedItem.getAttribute('data-value');
+    if (!selectedColor) return;
+
+    // Get the current selection
+    const range = snow.getSelection();
+    if (!range) return;
+
+    const formats = snow.getFormat(range.index, Math.max(1, range.length));
+
+    // Store the selection
+    const index = range.index;
+    const length = range.length;
+
+    // Apply formatting
+    if (length > 0) {
+      snow.formatText(index, length, {
+        ...formats,
+        color: selectedColor
+      }, 'api');
+    } else {
+      snow.format('color', selectedColor, 'api');
+    }
+    // Update UI
+    document.querySelectorAll(".ql-picker-item").forEach(item => {
+      item.classList.remove("selected");
+    });
+    selectedItem.classList.add("selected");
+    textColorPicker.classList.add("ql-active");
+
+    colorPicker.classList.remove("ql-expanded");
+
+    // **Fix: Temporarily blur and refocus the editor**
+    snow.blur(); // Blur first
+    snow.focus(); // Refocus after ensuring blur has applied
+    snow.setSelection(index, length); // Restore selection
+  }
+
+  // Prevent default touch behaviors
+  colorPicker.addEventListener('touchstart', (e) => {
+    if (e.target.closest('.ql-picker-item')) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, { passive: false });
+
+  colorPicker.addEventListener('touchmove', (e) => {
+    if (e.target.closest('.ql-picker-item')) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, { passive: false });
+
+  // Attach both touch and click events
+  colorPicker.addEventListener('touchend', handleColorSelection);
+  colorPicker.addEventListener('click', handleColorSelection);
+
+  // Background picker handler
+  function handleBackgroundSelection(event) {
+    const selectedItem = event.target.closest('.ql-picker-item');
+    if (!selectedItem) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const selectedBackground = selectedItem.getAttribute('data-value');
+    if (!selectedBackground) return;
+
+    const range = snow.getSelection();
+    if (!range) return;
+
+    const formats = snow.getFormat(range.index, Math.max(1, range.length));
+
+    // Store the selection
+    const index = range.index;
+    const length = range.length;
+
+    // Apply formatting
+    if (length > 0) {
+      snow.formatText(index, length, {
+        ...formats,
+        background: selectedBackground
+      }, 'api');
+    } else {
+      snow.format('background', selectedBackground, 'api');
+    }
+    // Update UI
+    document.querySelectorAll(".ql-picker-item").forEach(item => {
+      item.classList.remove("selected");
+    });
+    selectedItem.classList.add("selected");
+    bgColorPicker.classList.add("ql-active");
+
+    backgroundPicker.classList.remove("ql-expanded");
+
+    // **Fix: Temporarily blur and refocus the editor**
+    snow.blur(); // Blur first
+    snow.focus(); // Refocus after ensuring blur has applied
+    snow.setSelection(index, length); // Restore selection
+  }
+
+  // Attach both touch and click events
+  backgroundPicker.addEventListener('touchend', handleBackgroundSelection);
+  backgroundPicker.addEventListener('click', handleBackgroundSelection);
+
+  // Prevent default touch behaviors
+  backgroundPicker.addEventListener('touchstart', (e) => {
+    if (e.target.closest('.ql-picker-item')) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, { passive: false });
+
+  backgroundPicker.addEventListener('touchmove', (e) => {
+    if (e.target.closest('.ql-picker-item')) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, { passive: false });
+
+  function setupClickToScroll() {
+    console.log('Setting up click to scroll');
+    const parentDiv = document.getElementById('editor');
+
+    if (!parentDiv) {
+      console.error(`Div with id "${divId}" not found.`);
+      return;
+    }
+
+    parentDiv.addEventListener('click', (event) => {
+      // Check if the clicked element is a child of the parent div
+      if (parentDiv.contains(event.target)) {
+        const clickedElement = event.target;
+
+        // If the clicked target is not the parent div itself
+        if (clickedElement !== parentDiv) {
+          // Set a timeout to scroll the clicked element into view after 3 seconds
+          setTimeout(() => {
+            clickedElement.scrollIntoView({
+              behavior: 'smooth',
+              block: 'center', // Center the element in the view
+            });
+          }, 300); // 3 seconds delay
+        }
+      }
+    });
+  }
+  //  setupClickToScroll();
+
+  // Intercept all pasted elements (Node.ELEMENT_NODE === 1)
+  snow.clipboard.addMatcher(Node.ELEMENT_NODE, (node, delta) => {
+    delta.ops.forEach(op => {
+      if (op.insert) {
+        op.attributes = {
+          ...(op.attributes || {}),
+          'font': 'Helvetica',
+          'size': '14pt'
+        };
+      }
+    });
+    return delta;
+  });
+  editor.addEventListener('paste', function (e) {
+    console.log('Paste detected', e);
+    // Use a short timeout to let the paste complete first
+    setTimeout(() => {
+      // Update the toolbar UI to reflect the applied formatting
+      const fontLabel = document.querySelector('.ql-font .ql-picker-label');
+      if (fontLabel) {
+        fontLabel.setAttribute('data-value', 'Helvetica');
+        fontLabel.setAttribute('data-label', 'Helvetica');
+      }
+      const sizeLabel = document.querySelector('.ql-size .ql-picker-label');
+      if (sizeLabel) {
+        sizeLabel.setAttribute('data-value', `14pt`);
+        sizeLabel.setAttribute('data-label', `14pts`);
+      }
+      snow.format('font', 'Helvetica', Quill.sources.SILENT);
+      snow.format('size', `14pt`, Quill.sources.SILENT);
+      const range = snow.getSelection();
+      if (range) {
+        const format = snow.getFormat(range.index);
+        updateToolbarUI(format);
+      }
+    }, 100); // Increased delay to ensure paste completes fully
+  });
+
+ function scrollToCursorPosition(range, options = {}) {
+      console.log('[scrollToCursorPosition] called with range:', range, 'options:', options);
+      // Default options
+      const settings = {
+        centerCursor: false,     // Whether to center cursor in viewport
+        forceScroll: false,      // Whether to scroll even if cursor is visible
+        adjustForKeyboard: false, // Whether to adjust calculation for virtual keyboard
+        ...options
+      };
+      
+      // If we have no range, don't scroll at all
+      if (!range) {
+        console.warn('[scrollToCursorPosition] No range provided');
+        return;
+      }
+      
+      // Get ALL possible editor containers
+      const editor = document.getElementById('editor');
+      const editorContainer = document.querySelector('.ql-editor');
+      const editorWrapper = document.querySelector('.ql-container');
+      
+      console.log('[scrollToCursorPosition] DOM elements:', {
+        editor,
+        editorContainer,
+        editorWrapper
+      });
+      
+      // Ensure we have at least one scroll target
+      if (!editor && !editorContainer) {
+        console.error('[scrollToCursorPosition] Cannot find editor elements');
+        return;
+      }
+      
+      // Use the proper scroll container (prefer editorContainer)
+      const scrollTarget = editorContainer || editor;
+      
+      // Get either Quill selection bounds or DOM range bounds
+      let bounds;
+    
+      
+      // If this is a Quill selection object
+      if (typeof range.index === 'number') {
+        cursorIndex = range.index;
+        // Try to get bounds for this index (may fail for high indices)
+        try {
+          bounds = snow.getBounds(cursorIndex);
+          console.log('[scrollToCursorPosition] Got bounds for index:', cursorIndex, bounds);
+        } catch (e) {
+          console.warn('[scrollToCursorPosition] Error getting bounds for index', cursorIndex, e);
+          
+          // Try alternative approach
+          // Force selection and try again after a small delay
+          snow.setSelection(cursorIndex, 0, Quill.sources.USER);
+          // We'll continue with approximate bounds based on editor height
+          bounds = {
+            top: scrollTarget.scrollHeight, // Assume it's at the bottom
+            height: 20 // Default line height
+          };
+        }
+      }
+      // If this is a DOM range
+      else if (typeof range.getBoundingClientRect === 'function') {
+        bounds = range.getBoundingClientRect();
+        
+        // Try to determine the Quill index
+        try {
+          const node = range.startContainer;
+          const blot = Quill.find(node);
+          if (blot) {
+            cursorIndex = snow.getIndex(blot) + (range.startOffset || 0);
+            console.log('[scrollToCursorPosition] Calculated index from DOM range:', cursorIndex);
+          }
+        } catch (e) {
+          console.warn('[scrollToCursorPosition] Error getting index from DOM range', e);
+          // Just use the bounds if we can't get the index
+        }
+      } else {
+        // Invalid range object
+        console.error('[scrollToCursorPosition] Invalid range object', range);
+        return;
+      }
+      
+      // If we couldn't get valid bounds, don't scroll
+      if (!bounds || typeof bounds.top !== 'number') {
+        console.warn('[scrollToCursorPosition] Invalid bounds', bounds);
+        return;
+      }
+      
+      // Get the current viewport dimensions
+      const containerRect = scrollTarget.getBoundingClientRect();
+      const currentScroll = scrollTarget.scrollTop;
+      const viewportHeight = scrollTarget.clientHeight;
+      const scrollHeight = scrollTarget.scrollHeight;
+      
+      console.log('[scrollToCursorPosition] Scroll dimensions:', {
+        containerRect,
+        currentScroll,
+        viewportHeight,
+        scrollHeight
+      });
+      
+      // Calculate cursor position relative to the editor
+      const cursorPosition = bounds.top - containerRect.top + currentScroll;
+      const lineHeight = bounds.height || 20;
+      
+      // Get the visible area boundaries
+      const visibleTop = currentScroll;
+      const visibleBottom = visibleTop + viewportHeight;
+      
+      // Determine if we should center the cursor (for picker selections)
+      // or just ensure it's visible (for normal typing)
+      let newScrollPosition = currentScroll;
+      
+      // Different scroll behavior based on options
+      if (settings.centerCursor) {
+        // CENTER THE CURSOR in the viewport (for picker use)
+        
+        // Detect virtual keyboard height for mobile devices
+        let keyboardAdjustment = 0;
+        if (settings.adjustForKeyboard) {
+          const visualViewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+          const keyboardHeight = window.innerHeight - visualViewportHeight;
+          if (keyboardHeight > 50) { // If keyboard is likely open (height difference > 50px)
+            console.log('[scrollToCursorPosition] Detected keyboard height:', keyboardHeight);
+            keyboardAdjustment = keyboardHeight / 2; // Adjust centering calculation
+          }
+        }
+        
+        // Adjust to position cursor in the middle of the visible area (accounting for keyboard)
+        const visibleViewportHeight = viewportHeight - keyboardAdjustment;
+        newScrollPosition = cursorPosition - (visibleViewportHeight / 3); // Position at 1/3 instead of 1/2 for better UX
+        
+        console.log('[scrollToCursorPosition] Centering cursor at position:', cursorPosition,
+                    'new scroll position:', newScrollPosition,
+                    'keyboard adjustment:', keyboardAdjustment);
+      } else {
+        // We want comfortable margins around the cursor
+        const topMargin = lineHeight * 2;
+        const bottomMargin = lineHeight * 2;
+        
+        // Check if cursor is outside the comfortable visible area
+        const isVisible = (cursorPosition >= visibleTop + topMargin &&
+                         cursorPosition <= visibleBottom - bottomMargin);
+        
+        if (!isVisible || settings.forceScroll) {
+          if (cursorPosition < visibleTop + topMargin) {
+            // Cursor is too close to top - scroll up just enough to give it margin
+            newScrollPosition = Math.max(0, cursorPosition - topMargin);
+          }
+          else if (cursorPosition > visibleBottom - bottomMargin) {
+            // Cursor is too close to bottom - scroll down just enough
+            newScrollPosition = cursorPosition - viewportHeight + bottomMargin;
+          }
+        }
+      }
+      
+      // Ensure we stay within bounds
+      newScrollPosition = Math.max(0, Math.min(newScrollPosition, scrollTarget.scrollHeight - viewportHeight));
+      console.log('[scrollToCursorPosition] Final newScrollPosition:', newScrollPosition, 'current:', currentScroll);
+      
+      // Only scroll if the change is significant or we're forcing it
+      if (settings.forceScroll || Math.abs(newScrollPosition - currentScroll) > lineHeight / 2) {
+        // Apply the scroll with appropriate behavior
+        const scrollBehavior = 'auto'
+        
+        console.log(`[scrollToCursorPosition] Scrolling ${scrollTarget === editorContainer ? '.ql-editor' : '#editor'} to:`, newScrollPosition);
+        
+        // Try scrolling the primary target
+        scrollTarget.scrollTo({
+          top: newScrollPosition,
+          behavior: scrollBehavior
+        });
+        
+        // Also try scrolling parent container as a fallback
+        if (editorWrapper && scrollTarget !== editorWrapper) {
+          console.log('[scrollToCursorPosition] Also scrolling wrapper for redundancy');
+          editorWrapper.scrollTo({
+            top: newScrollPosition,
+            behavior: scrollBehavior
+          });
+        }
+        // Ensure focus remains on the editor
+        //setTimeout(() => editorContainer.focus(), 300);
+        // Ensure the cursor is set correctly after scrolling
+        if (cursorIndex !== undefined) {
+          // Make sure we're not interfering with other operations
+          setTimeout(() => {
+         
+            snow.setSelection(cursorIndex, 0, Quill.sources.API);
+            
+            console.log('[scrollToCursorPosition] Reset selection to index:', cursorIndex);
+          }, 50); // Small delay to let scroll complete
+        }
+    
+      } else {
+        console.log('[scrollToCursorPosition] Skipping scroll, not needed or forced');
+      }
+    }
+  
+
+
+  function applyFormatOnEmptyCell(cell, isFirstCell = false) {
+    if (!cell) return;
+
+    snow.focus();
+
+    const range = snow.getSelection();
+    if (!range) return;
+
+    // Get the current formats from the cell
+    const blot = Quill.find(cell);
+    if (!blot) return;
+
+    const cellIndex = snow.getIndex(blot);
+    const cellTextLength = blot.length() - 1; // Exclude newline
+
+    // Get active formats from the current selection
+    const activeFormats = snow.getFormat(cellIndex, Math.max(1, cellTextLength));
+    console.log('activeFormats from cell :>> ', activeFormats);
+
+    // Fetch the default font and size
+    const defaultFont = snow.defaultFormats ? snow.defaultFormats.font : '';
+    const defaultSize = snow.defaultFormats ? snow.defaultFormats.size : '';
+
+    // Merge the last applied formats with active formats
+    // Build the formats to apply: only lastSelectedFormats and defaults
+    const mergedFormats = {
+      font: lastSelectedFormats.font || defaultFont,
+      size: lastSelectedFormats.size || defaultSize,
+      bold: lastSelectedFormats.bold,
+      italic: lastSelectedFormats.italic,
+      underline: lastSelectedFormats.underline,
+      strike: lastSelectedFormats.strike,
+      color: lastSelectedFormats.color,
+      background: lastSelectedFormats.background,
+      // Add any other formats you want to preserve
+    };
+
+    // Store the merged format for next cell click
+    lastSelectedFormats = { ...mergedFormats };
+    console.log('Updated lastSelectedFormats :>> ', lastSelectedFormats);
+
+    // If cell is empty, insert a zero-width space to apply formatting
+    if (cell.innerText.trim() === '') {
+      // Apply formats using USER source for iOS compatibility
+      snow.insertText(cellIndex, '\u200B', mergedFormats, Quill.sources.SILENT);
+
+      // Apply formats explicitly to ensure they stick
+      // Move cursor back to the correct position after inserting
+      snow.setSelection(cellIndex, Quill.sources.SILENT);
+
+      // Only set selection if this is the first cell and we want to position cursor here
+      if (isFirstCell) {
+        snow.setSelection(cellIndex, 0, Quill.sources.USER);
+      }
+    } else {
+      // If cell already has text, apply formatting directly
+      snow.formatText(cellIndex, cellTextLength, mergedFormats, Quill.sources.SILENT);
+
+      // Also apply formats to the current selection
+      Object.keys(mergedFormats).forEach(format => {
+        if (mergedFormats[format]) {
+          snow.format(format, mergedFormats[format], Quill.sources.USER);
+        }
+      });
+    }
+
+    // Force update toolbar UI to reflect active formats
+    setTimeout(() => {
+      updateToolbarUI(mergedFormats);
+    }, 0);
+  }
+
+
+
+// 🎯 Save cursor position before picker opens
+  function saveCursorPosition() {
+    // First try to get direct selection
+    savedRange = snow.getSelection();
+    // Fallback to last known range if current selection is null
+    if (!savedRange && lastKnownRange) {
+      savedRange = lastKnownRange;
+      console.log('[saveCursorPosition] Using lastKnownRange as fallback');
+    }
+    console.log('[saveCursorPosition] savedRange:', savedRange);
+  }
+    // 🎯 Restore selection, scroll to cursor, and ensure cursor is visible
+    function restoreCursorAndScroll() {
+      console.log('[restoreCursorAndScroll] called, savedRange:', savedRange);
+      
+      // Use saved range or fallback to last known range
+      let rangeToUse = savedRange || lastKnownRange;
+      
+      if (rangeToUse) {
+        // Force a selection update
+        snow.setSelection(rangeToUse.index, rangeToUse.length || 0, Quill.sources.SILENT);
+        
+        // In the next tick, scroll to the cursor and center it
+        setTimeout(() => {
+          console.log('[restoreCursorAndScroll] calling scrollToCursorPosition for index:', rangeToUse.index);
+          scrollToCursorPosition({ index: rangeToUse.index }, { centerCursor: true, forceScroll: true });
+        }, 100); // Increased timeout for DOM to settle
+      } else {
+        console.warn('[restoreCursorAndScroll] No valid range found');
+      }
+    }
+
+
+  // 🎨 Hook into pickers
+  document.querySelectorAll('.ql-picker').forEach(picker => {
+    picker.addEventListener('mousedown', saveCursorPosition); // Before picker opens
+    // Detect change properly using 'click' on picker items
+    // ✅ Ensures scrolling happens after picker updates
+    picker.addEventListener('change', () => {
+      setTimeout(restoreCursorAndScroll, 100); // Small delay for UI to update first
+    });
+
+    // Alternative: Listen to dropdown item selection
+    picker.querySelectorAll('.ql-picker-item').forEach(item => {
+      item.addEventListener('touchend', () => {
+        setTimeout(restoreCursorAndScroll, 100);
+      });
+    });
+  });
+
+  const toolbarSelectors = {
+    font: ".ql-font .ql-picker-options .ql-picker-item",
+    size: ".ql-size .ql-picker-options .ql-picker-item",
+    align: ".ql-align .ql-picker-options .ql-picker-item",
+    background: ".ql-background .ql-picker-options .ql-picker-item",
+    color: ".ql-color .ql-picker-options .ql-picker-item"
+  };
+  // Reusable function to handle picker logic
+  function handlePicker(selector, type, quillInstance) {
+    const options = document.querySelectorAll(selector);
+
+    options.forEach((option) => {
+      option.addEventListener("click", (e) => {
+        e.preventDefault();
+        const value = option.getAttribute("data-value") || null;
+        const range = quillInstance.getSelection();
+      
+      
+      if(range) cursorIndex = range.index;
+        // Update the editor format and toolbar UI in one step
+        quillInstance.format(type, value);
+        options.forEach((option) => {
+          const optionValue = option.getAttribute("data-value") || null;
+          if (optionValue === value) {
+            option.classList.add("ql-selected");
+          } else {
+            option.classList.remove("ql-selected");
+          }
+        });
+
+
+        // After formatting, center the cursor with a longer delay to let changes and virtual keyboard fully apply
+        setTimeout(() => {
+          if (cursorIndex !== null) {
+          // Force selection update first
+          quillInstance.setSelection(cursorIndex, 0, Quill.sources.USER);
+                 
+          // Then center in viewport with higher priority
+          setTimeout(() => {
+              console.log('[handlePicker] Attempting to center cursor at index:', cursorIndex);
+              scrollToCursorPosition({ index: cursorIndex }, { centerCursor: true, forceScroll: true, adjustForKeyboard: true });
+            }, 50);
+          }
+        }, 200); // Increased delay for mobile
+        if (range) {
+
+          const [line] = quillInstance.getLine(range.index);
+          // Let Quill handle creating the new format
+
+          try {
+
+            if (line && line.domNode) {
+              console.log("domNode", line.domNode);
+              // Check if line contains <br> tag
+              const hasBrTag = line.domNode.querySelector('br') !== null;
+
+              if (!hasBrTag) {
+                // Check if line is empty (only contains formatting elements or whitespace)
+                const lineText = line.domNode.textContent.replace(/[\u200B\s]/g, '');
+                // Count formatted elements
+                const formattedElements = line.domNode.querySelectorAll('span[class*="ql-font-"], span[style*="font-size"]');
+                const hasMultipleFormats = formattedElements.length == 2;
+                // Only remove old elements if line is empty and has formatted elements
+                if (lineText === '' && hasMultipleFormats) {
+                  // Find and remove old formatted elements
+                  const oldElements = line.domNode.querySelectorAll('span[class*="ql-font-"], span[style*="font-size"]');
+                  oldElements.forEach(el => el.remove());
+
+                }
+                // First get the current leaf at cursor position
+                const [leaf, offset] = snow.getLeaf(range.index);
+                let node = leaf?.domNode;
+                console.log("node", node);
+                // Skip if it's the cursor itself
+                if (node.classList && node.classList.contains('ql-cursor')) {
+                  node = node.nextSibling || node.parentNode;
+                }
+                console.log("node.parentNode", node.parentNode);
+                // Find closest styled element (optional: filter by tags like span, strong)
+                const formattedNode = node.parentNode?.closest('strong, em, u, s');
+                console.log("formattedNode", formattedNode);
+                formattedNode.querySelectorAll('').forEach(child => {
+                    child.style.fontSize = 'inherit';
+                });
+                }
+              }
+                // Re-select the range to ensure cursor is visible
+                quillInstance.setSelection(range.index, 0, 'user');
+                
+          } catch (e) {
+            console.warn('Format update failed:', e);
+          }
+        }
+      });
+    });
+  }
+
+  function handleBackspace(picker, type, quill) {
+    const range = quill.getSelection(); // Get the current selection in Quill
+    let [currentLine, offset] = quill.getLine(range.index);
+    let [prevLine] = quill.getLine(range.index - 1);
+
+    // Check if current line is a list and previous line is NOT a list
+    if (currentLine && prevLine && currentLine.statics.blotName === 'list' && prevLine.statics.blotName !== 'list') {
+      let format = quill.getFormat(range.index);
+
+      // If backspace is pressed at start of list item, prevent merging with non-list
+      if (offset === 0) {
+        quill.formatText(range.index, 1, 'list', false); // Remove list formatting
+      }
+    }
+
+    if (range && range.index !== null) {
+      // Get the previous format and save it
+      const format = quill.getFormat(range.index - 1, 1);
+      const isCollapsed = range.length === 0;
+      // Save the previous format only if the selection is collapsed (cursor, not range)
+      if (isCollapsed) {
+        lastFormats = { ...format };
+      }
+      // Apply the previous format only if it's defined and the selection is collapsed
+      if (isCollapsed && lastFormats[type]) {
+        quill.format(type, lastFormats[type]);
+      }
+      // Update the toolbar UI
+      const allItems = picker.querySelectorAll(".ql-picker-item");
+      allItems.forEach((item) => item.classList.remove("ql-selected"));
+      if (lastFormats[type]) {
+        const selectedItem = picker.querySelector(`.ql-picker-item[data-value="${lastFormats[type]}"]`);
+        if (selectedItem) {
+          selectedItem.classList.add("ql-selected");
+        }
+      }
+    }
+  }
+  let isUpdating = false; // Flag to prevent recursive calls
+  let debounceTimer;
+  function syncToolbarWithEditor(selector, format, quillInstance) {
+    const options = document.querySelectorAll(selector);
+    quillInstance.on("editor-change", () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        const currentFormat = quillInstance.getFormat()[format] || null;
+        // Update toolbar selection (if needed)
+        options.forEach((option) => {
+          const optionValue = option.getAttribute("data-value") || null;
+          if (optionValue === currentFormat) {
+            option.classList.add("ql-selected");
+          } else {
+            option.classList.remove("ql-selected");
+          }
+        });
+      }, 0); // Adjust delay (300ms) as needed
+    });
+  }
+
+  // /**
+  // * Special handler for backspace on empty lines
+  //  * Fixes the issue where backspace requires two presses on empty lines
+  //  */
+  // function handleBackspaceOnEmptyLine(quill, event) {
+  //  const selection = quill.getSelection();
+  //  if (!selection) return;
+  //  // Get the current line
+  //  const [line, offset] = quill.getLine(selection.index);
+  //  if (!line || !line.domNode) return;
+  //  // Only handle if we're at the start of a line (offset === 0)
+  //  if (offset !== 0) return;
+  //  // Check if this line is empty (contains only zero-width space)
+  //  const isEmpty =
+  //   line.domNode.innerHTML === '<br>' ||
+  //   line.domNode.textContent.trim() === '' ||
+  //   line.domNode.textContent === '\u200B'; // Zero-width space character
+  //   //Only handle backspace on empty lines
+  //   if (isEmpty && selection.index > 0) {
+  //   // Get the previous line
+  //   const prevIndex = selection.index - 1;
+  //   const [prevLine] = quill.getLine(prevIndex);
+  //   if (prevLine) {
+  //    // Prevent default backspace behavior
+  //    event.preventDefault();
+  //    // Delete the current empty line
+  //    const lineLength = line.length();
+  //    quill.deleteText(selection.index, lineLength, Quill.sources.USER);
+  //    // Set selection to the end of previous line
+  //    const prevLineLength = prevLine.length();
+  //    const newPosition = prevIndex - (prevLineLength > 0 ? 0 : 1);
+  //    quill.setSelection(newPosition, 1, Quill.sources.USER);
+  //    console.log("Empty line backspace handled in one keypress");
+  //    return true;
+  //   }
+  //  }
+  //  return false;
+  // }
+
+
+  // Register pickers dynamically
+  function registerPickers(toolbarSelectors, quillInstance) {
+    for (const [format, selector] of Object.entries(toolbarSelectors)) {
+      handlePicker(selector, format, quillInstance);
+      syncToolbarWithEditor(selector, format, quillInstance);
+    }
+  }
+  registerPickers(toolbarSelectors, snow);
+  // Listen for the backspace key
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Backspace") {
+   
+      // First check for empty line case
+      // if (handleBackspaceOnEmptyLine(snow, event)) {
+      //   // If the empty line case was handled, we're done
+      //   return;
+      // }
+      // Pass the relevant picker and format type to the backspace handlerZ
+      handleBackspace(document.querySelector(toolbarSelectors.font), "font", snow);
+      handleBackspace(document.querySelector(toolbarSelectors.size), "size", snow);
+      handleBackspace(document.querySelector(toolbarSelectors.align), "align", snow);
+      handleBackspace(document.querySelector(toolbarSelectors.background), "background", snow);
+      handleBackspace(document.querySelector(toolbarSelectors.color), "color", snow);
+    }
+    else if (event.key === "Enter") {
+      isKeyboardOperation = true;
+      // Handle Enter key to update toolbar immediately with preserved formatting
+      setTimeout(() => {
+        // Get the current selection
+        const range = snow.getSelection();
+        if (range) {
+          // Get the current formats at cursor position
+          const formats = snow.getFormat(range.index, range.length);
+          // Update the toolbar with these formats
+          updateToolbarUI(formats);
+          isKeyboardOperation = false;
+        }
+      }, 50);
+    }
+  }, { capture: true, passive: false });
+
+  function applyStylesToListElements(editor) {
+    const range = editor.getSelection();
+    if (!range) return;
+
+    // Get the current block (line) and check if it's a list item (LI)
+    const [block, offset] = editor.getLine(range.index);
+    if (block && block.domNode.tagName === 'LI') {
+      const liElement = block.domNode;
+
+      // Get all applied formats dynamically
+      const formats = editor.getFormat(range);
+
+      // Clear previous inline styles (optional)
+      liElement.style = '';
+
+      // Dynamically apply all relevant formats to the <li> tag
+      Object.keys(formats).forEach((key) => {
+        switch (key) {
+          case 'size':
+            liElement.style.fontSize = formats[key];
+            break;
+          case 'font':
+            liElement.style.fontFamily = formats[key];
+            break;
+          case 'color':
+            liElement.style.color = formats[key];
+            break;
+          case 'background':
+            liElement.style.backgroundColor = formats[key];
+            break;
+          case 'bold':
+            liElement.style.fontWeight = formats[key] ? 'bold' : '';
+            break;
+          case 'italic':
+            liElement.style.fontStyle = formats[key] ? 'italic' : '';
+            break;
+          case 'underline':
+            liElement.style.textDecoration = formats[key] ? 'underline' : '';
+            break;
+          default:
+            // Handle other formats as needed
+            break;
+        }
+      });
+    }
+  }
+
+
+  //keyboard height manage function - for both iphone and ipad
+  function adjustForKeyboard() {
+
+    const toolbar = document.getElementById('toolbar');
+    const editor = document.getElementById('editor');
+    const toolbarHeight = toolbar.offsetHeight || 0;
+
+    if (window.visualViewport) {
+      const viewportHeight = window.visualViewport.height;
+      const height = window.innerHeight - viewportHeight;
+      keyboardHeight = height;
+      if (keyboardHeight > 0) {
+        // Keyboard is open → Adjust height with 20px gap
+        const adjustedHeight = viewportHeight - toolbarHeight - 20;
+        editor.style.height = `${adjustedHeight}px`;
+      } else {
+        // Keyboard is closed → Full screen height minus 10px for blue button
+        editor.style.height = `calc(100vh - ${toolbarHeight + 10}px)`;
+      }
+    }
+  }
+
+  // ✅ Apply on both iPhones & iPads
+  window.visualViewport.addEventListener('resize', adjustForKeyboard);
+  window.addEventListener('orientationchange', adjustForKeyboard); // Handle device rotation
+
+  // function isToolbarFullyVisible() {
+  //   var $toolbar = $('#toolbar');
+  //   var toolbarTop = $toolbar.offset().top;
+  //   var toolbarBottom = toolbarTop + $toolbar.outerHeight();
+  //   var windowHeight = $(window).height();
+  //   return toolbarTop >= 0 && toolbarBottom <= windowHeight;
+  // }
+
+  // $(window).on('resize', function () {
+  //   if (isToolbarFullyVisible) {
+  //     // window.webkit.messageHandlers.callbackHandler.postMessage('Toolbar_Visible');
+  //   } else {
+  //     // window.webkit.messageHandlers.callbackHandler.postMessage('Toolbar_Not_Visible');
+  //   }
+  // });
+
+
+  $("#btnscrollToBottom").click(function () {
+    const $editable = $('.ql-editor');
+    const height = $editable[0].scrollHeight;
+
+
+    $("#MakeUIWorkForEdit").click(function () {
+      snow.root.scrollTop = 0;
+    });
+
+    function scrollToCursor() {
+      var range = snow.getSelection();
+      if (range) {
+        var bounds = snow.getBounds(range.index, range.length);
+        snow.root.scrollTop = bounds.top;
+      }
+    }
+
+
+
+    $("#ScrollToCursorPosition").click(function () {
+      scrollToCursor();
+    });
+    console.log('scroll height: ', height);
+
+    $editable.animate({
+      scrollTop: height
+    }, 500);
+  });
+
+  // function getTextOfRichTextEditorSave() {
+  //   snow.root.blur();
+  //   snow.enable(false);
+  //   return snow.root.innerHTML;
+  // }
+
+
+
+  function getTextOfRichTextEditorEdit() {
+    snow.enable(true);
+    const editor = document.querySelector('.ql-editor');
+    editor.focus();
+    editor.click();
+    const root = snow.root;
+    const selectionPosition = Math.round(root.scrollTop / (root.scrollHeight - root.clientHeight) * snow.getLength());
+    snow.setSelection(selectionPosition || 0);
+    document.getElementById('toolbar').style.display = 'block';
+    const range = window.getSelection().getRangeAt(0); // Get the current selection
+    if (range) {
+      scrollToCursorPosition(range, { centerCursor: true, forceScroll: true });
+    }
+  }
+
+
+  function setTapToEdit(isTabToEdit, isVersionAvailable) {
+    const toolbar = document.getElementById('toolbar');
+    const editor = document.getElementById('editor');
+    const toolbarHeight = toolbar.offsetHeight;
+
+    if (window.visualViewport) {
+      const viewportHeight = window.visualViewport.height;
+    }
+     window.webkit.messageHandlers.callbackHandler.postMessage(
+      `Toolbar_Visible${isTabToEdit}${isVersionAvailable}`,
+     );
+    if (isTabToEdit) {
+      document.getElementById('toolbar').style.display = 'none';
+      if (isVersionAvailable) {
+        snow.enable(false);
+      } else {
+        snow.enable(true);
+        isPlanNote = false;
+        editor.style.height = `calc(100vh - 10px)`;
+        const parentDiv = document.getElementById('editor');
+        parentDiv.addEventListener('click', (event) => {
+          document.getElementById('toolbar').style.display = 'block';
+          const range = snow.getSelection(); // Get the current selection
+          // if (range) {
+          //   setTimeout(() => {
+          //     restoreCursorAndScroll();
+          //   }, 100);
+          // }
+
+          // if (keyboardHeight > 0) {
+          //   editor.style.height = viewportHeight - toolbarHeight - 20;
+          // } else {
+          //   editor.style.height = `calc(100vh - ${toolbarHeight + 10}px)`;
+          // }
+        })
+      }
+    } else {
+      snow.enable(false);
+      editor.style.height = `calc(100vh - 10px)`;
+      document.getElementById('toolbar').style.display = 'none';
+    }
+  }
+
+
+
+  // async function setkeyboardScroll() {
+  //   const range = snow.getSelection();
+  //   await snow.blur();
+  //   await snow.setSelection(range.index, range.length);
+  //   await toolbar.scrollIntoView();
+  // }
+
+  // Call this function when the font and size values are received from Swift
+  // function setDefaults(fontName, fontSize) {
+  //   initializeEditor(fontName, fontSize);
+  // }
+
+  function setFontStyle(fontName, fontSize) {
+    // Save the current selection
+    const currentSelection = snow.getSelection();
+    const isFocused = document.activeElement === snow.container;
+
+    if (isFocused) {
+      snow.blur();
+    }
+    // Find the font dropdown in the toolbar
+    const fontDropdown = document.querySelector('.ql-font .ql-picker-options');
+    if (fontDropdown) {
+      const fontOption = fontDropdown.querySelector(`.ql-picker-item[data-value="${fontName}"]`);
+      if (fontOption) {
+        fontOption.click();
+        const fontLabel = document.querySelector('.ql-font .ql-picker-label');
+        if (fontLabel) {
+          fontLabel.setAttribute('data-value', fontName);
+          fontLabel.setAttribute('data-label', fontName);
+          //fontLabel.innerText = fontOption.getAttribute('data-label');
+        }
+      } else {
+        console.error(`Font "${fontName}" not found.`);
+      }
+    }
+    const sizeDropdown = document.querySelector('.ql-size .ql-picker-options');
+    if (sizeDropdown) {
+      const sizeOption = sizeDropdown.querySelector(`.ql-picker-item[data-value="${fontSize}pt"]`);
+      if (sizeOption) {
+        sizeOption.click();
+        const sizeLabel = document.querySelector('.ql-size .ql-picker-label');
+        if (sizeLabel) {
+          sizeLabel.setAttribute('data-value', `${fontSize}pt`);
+          sizeLabel.setAttribute('data-label', `${fontSize}pts`);
+          //sizeLabel.innerText = sizeOption.getAttribute('data-label');
+        }
+      } else {
+        console.error(`Font size "${fontSize}pt" not found.`);
+      }
+    }
+    // Apply formatting without triggering focus
+    snow.format('font', fontName, Quill.sources.SILENT);
+    snow.format('size', `${fontSize}pt`, Quill.sources.SILENT);
+    // Save default formats globally by attaching them to the Quill instance
+    snow.defaultFormats = {
+      font: fontName,
+      size: `${fontSize}pt`
+    };
+
+    // Set global default formats for reference elsewhere
+    defaultFormats = snow.defaultFormats;
+
+    // Also update lastFormats which is used in some event handlers
+    lastFormats = {
+      font: fontName,
+      size: `${fontSize}pt`
+    };
+
+    // Apply to globalLastUsedFormat to ensure format persistence
+    if (typeof globalLastUsedFormat !== 'undefined') {
+      globalLastUsedFormat.font = fontName;
+      globalLastUsedFormat.size = `${fontSize}pt`;
+    }
+
+      
+    // Restore previous selection
+    if (currentSelection) {
+      snow.setSelection(currentSelection, Quill.sources.SILENT);
+    }
+    
+    let marginTop = 0;
+    let marginTops = 0;
+    if(fontSize == '14'){
+        marginTop = '3px';
+        marginTops = '-2px';
+    }else if(fontSize == '16'){
+        marginTop = '5px';
+        marginTops = '1px';
+    }else {
+        marginTop = '7px';
+        marginTops = '1px';
+    }
+
+    // Get or create the style element for dynamic list styling
+      let styleElement = document.getElementById('dynamic-list-styles');
+      if (!styleElement) {
+        styleElement = document.createElement('style');
+        styleElement.id = 'dynamic-list-styles';
+        document.head.appendChild(styleElement);
+      }
+      
+      // Update the CSS for list items only
+      styleElement.textContent = `
+        .ql-editor li[data-list="ordered"] > .ql-ui:before {
+          margin-top : ${marginTop} !important;
+        }
+      `;
+      
+      // Update the CSS for list items only
+      styleElement.textContent = `
+        .ql-editor li[data-list="bullet"] > .ql-ui:before {
+          margin-top : ${marginTops} !important;
+        }
+      `;
+
+      console.log(`Updated list styling - Size: ${fontSize}`);
+    setTimeout(() => {
+      snow.blur(); // Explicitly remove focus
+    }, 0)
+  }
+
+
+
+  function manageKeyboardHeightBasedOnMedia(isMedia) {
+
+    const editor = document.getElementById('editor');
+    const toolbar = document.getElementById('toolbar');
+    const toolbarHeight = toolbar.offsetHeight || 0; // Handle case where toolbar is hidden\n
+    // 10px gap from the blue button\n
+    if (window.visualViewport) {
+      const viewportHeight = window.visualViewport.height;
+      const keyboardHeight = window.innerHeight - viewportHeight;
+    }
+    if (keyboardHeight > 0) {
+      editor.style.height = viewportHeight - toolbarHeight - 20;
+    } else {
+      if (isMedia === 'false') {
+
+        if (toolbar.style.display == 'none') {
+          editor.style.height = `calc(100vh - 10px)`;
+        } else {
+          editor.style.height = `calc(100vh - ${toolbarHeight + 10}px)`;
+        }
+        // window.webkit.messageHandlers.callbackHandler.postMessage('isMedia add');
+        // editor.style.height = `calc(100vh - ${toolbarHeight + blueButtonMargin}px)`;
+      } else {
+
+        // window.webkit.messageHandlers.callbackHandler.postMessage('isMedia remove');
+
+        if (toolbar.style.display == 'none') {
+          editor.style.height = `calc(100vh - 10px)`;
+        } else {
+          editor.style.height = `calc(100vh - ${toolbarHeight + 130}px)`;
+        }
+
+      }
+    }
+  }
+
+  function changeThePlaceHolder(newPlaceholder) {
+    snow.root.setAttribute('data-placeholder', `${newPlaceholder}`);
+  }
+
+
+  var globalLastUsedFormat = {
+    font: snow.defaultFormats?.font ?? '',     // Empty default - no font
+    size: snow.defaultFormats?.size ?? '',     // Empty default - no size
+    bold: false,
+    italic: false,
+    underline: false,
+    strike: false,
+    color: null,
+    background: null
+  };
+
+
+    // Utility function for handling empty line click formatting
+    function handleEmptyLineClick(quill, index) {
+      console.log("Clicked!");
+      const range = quill.getSelection();
+      if (!range) return;
+
+      // Get the current line
+      const [currentLine] = quill.getLine(range.index);
+      if (!currentLine || !currentLine.domNode) return;
+
+      // Check if this is an empty line (just a <br> or empty)
+      const isEmpty = currentLine.domNode.innerHTML === '<br>' ||
+        currentLine.domNode?.textContent?.trim() === '';
+
+      if (isEmpty) {
+        // Look for a previous non-empty line to get formats from
+        let prevLine = currentLine.prev;
+        let previousElement = null;
+
+        // Try to find the nearest non-empty line above
+        while (prevLine && !previousElement) {
+          if (prevLine.domNode) {
+            const inner = prevLine.domNode.innerHTML.trim();
+            const isOnlyNbsp = (
+              inner === '&nbsp;' ||
+              inner === '<p>&nbsp;</p>' ||
+              inner === '<p>\u00A0</p>' || // actual Unicode char
+              inner.replace(/\s|&nbsp;|<br>/g, '') === '' // more aggressive cleanup
+            );
+            if (
+              !isOnlyNbsp ||
+              prevLine.domNode.textContent.trim() !== '' &&
+              inner !== '<br>'
+            ) {
+              // Get only the last meaningful element
+              const lastElementContainer = getLastMeaningfulElement(prevLine.domNode);
+              previousElement = lastElementContainer || prevLine.domNode;
+              console.log("Found element:", previousElement.innerHTML);
+              break;
+            }
+          }
+          prevLine = prevLine.prev;
+        }
+
+        let isPrevTable = false;
+        if (previousElement && previousElement.tagName === 'TABLE') {
+          isPrevTable = true;
+        }
+
+        // After the while loop
+        let aboveFormat = null;
+        let prevIndex = null;
+        if (prevLine) {
+          prevIndex = quill.getIndex(prevLine);
+        } else if (previousElement) {
+          const prevBlot = Quill.find(previousElement);
+          if (prevBlot) {
+            prevIndex = snow.getIndex(prevBlot);
+          }
+        }
+        if (prevIndex !== null) {
+          aboveFormat = snow.getFormat(prevIndex, 1);
+        }
+        let formatToApply = null;
+
+        if (!isPrevTable && aboveFormat && Object.keys(aboveFormat).length > 0) {
+          formatToApply = filterOutTableFormats(aboveFormat);
+        } else {
+          formatToApply = filterOutTableFormats(lastSelectedFormats);
+        }
+        console.log("formatToApply:", formatToApply);
+        // Apply default formats if we're on the first line and no formatting is available
+        if ((!previousElement || !prevLine) && (!formatToApply || Object.keys(formatToApply).length === 0)) {
+          console.log("First line with no formatting detected");
+          // Get the next line and its formatting using descendant to find the next block
+          const [nextLine] = snow.scroll.descendant(Quill.import('blots/block'), index + 1);
+          console.log("Next line found:", nextLine);
+          if (nextLine && nextLine !== currentLine) {
+            console.log("Using next line as format source");
+            // Set previousElement to the DOM node of the next line
+            previousElement = nextLine.domNode;
+            // return;
+          }
+          else {
+            // If we couldn't find or use next line formatting, fall back to defaults
+            console.log("Applying default formats for first line:", snow.defaultFormats);
+            formatToApply = {
+              font: snow.defaultFormats?.font || '',
+              size: snow.defaultFormats?.size || ''
+            };
+          }
+        }
+        snow.formatLine(index, 0, formatToApply, Quill.sources.USER);
+
+        // First, add this helper function at the top of your file
+        function getLastMeaningfulElement(element) {
+          if (!element) return null;
+          const tempDiv = document.createElement('div');
+          // If we're working with a DOM element directly
+          if (element.nodeType === 1) {
+            // Clone the entire element to preserve all formatting
+            tempDiv.innerHTML = element.outerHTML || element.innerHTML;
+          } else {
+            // Otherwise use the innerHTML
+            tempDiv.innerHTML = element.innerHTML;
+          }
+          // Log the HTML structure for debugging
+          console.log("Original HTML structure:", tempDiv.innerHTML);
+          // Find all elements with text content or formatting
+          const allElements = [];
+          // Helper function to find elements with formatting or text content
+          function findFormattedElements(node, path = []) {
+            if (!node) return;
+            // If this is a text node with content, record its path
+            if (node.nodeType === 3 && node.textContent.trim() !== '') {
+              // We found text content, record the path to it
+              allElements.push({
+                path: [...path],
+                node: node,
+                hasText: true
+              });
+              return;
+            }
+            // If this is an element node
+            if (node.nodeType === 1) {
+              // Record this element if it has formatting attributes
+              if (node.tagName === 'STRONG' ||
+                node.tagName === 'B' ||
+                node.tagName === 'EM' ||
+                node.tagName === 'I' ||
+                node.tagName === 'U' ||
+                node.tagName === 'S' ||
+                node.tagName === 'SPAN' ||
+                node.hasAttribute('class') ||
+                node.hasAttribute('style')) {
+                allElements.push({
+                  path: [...path],
+                  node: node,
+                  hasFormat: true
+                });
+              }
+              // Traverse children
+              Array.from(node.childNodes).forEach((child, index) => {
+                findFormattedElements(child, [...path, index]);
+              });
+            }
+          }
+          // Start traversal from the root
+          findFormattedElements(tempDiv);
+          // No elements found at all
+          if (allElements.length === 0) return null;
+          // Find elements that have both text and formatting
+          // Sort by path length to find the deepest elements first
+          allElements.sort((a, b) => b.path.length - a.path.length);
+          // Find the last text element
+          const textElements = allElements.filter(e => e.hasText);
+          if (textElements.length === 0) return null;
+          const lastTextElement = textElements[0];
+          // Now find the outermost parent with formatting that contains this text
+          let currentNode = lastTextElement.node;
+          let parent = currentNode.parentNode;
+          // Climb up the tree until we find a parent with formatting
+          // or until we hit the root div
+          while (parent && parent !== tempDiv) {
+            // Check if this parent has formatting
+            if (parent.tagName === 'STRONG' ||
+              parent.tagName === 'B' ||
+              parent.tagName === 'EM' ||
+              parent.tagName === 'I' ||
+              parent.tagName === 'U' ||
+              parent.tagName === 'S' ||
+              parent.tagName === 'SPAN' ||
+              parent.hasAttribute('class') ||
+              parent.hasAttribute('style')) {
+              // We found a formatting parent, remember it
+              currentNode = parent;
+            }
+            parent = parent.parentNode;
+          }
+          // Now that we've found the outermost formatting element,
+          // let's clone it to return
+          const container = document.createElement('div');
+          container.appendChild(currentNode.cloneNode(true));
+          console.log("Returning formatted element:", container.innerHTML);
+          return container;
+        }
+
+
+        if (previousElement) {
+          // Get the HTML structure of the previous line
+          // Get the last meaningful element with its formatting
+          const lastMeaningfulContainer = getLastMeaningfulElement(previousElement);
+
+          if (lastMeaningfulContainer && lastMeaningfulContainer.firstElementChild) {
+            const lastElement = lastMeaningfulContainer.firstElementChild;
+
+            // Copy the exact element with all its attributes
+            let html = lastElement.outerHTML.replace(/>.*<\//, '>\u200B</');
+
+            // Replace the current line's content with the cloned structure
+            currentLine.domNode.innerHTML = html;
+            console.log(html);
+
+            // Extract all formatting elements from the previous line
+            const formatElements = {
+              bold: previousElement.querySelector('strong, b'),
+              italic: previousElement.querySelector('em, i'),
+              underline: previousElement.querySelector('u'),
+              strike: previousElement.querySelector('s, strike'),
+              font: previousElement.querySelector('span[class*="ql-font-"], span[style*="font"]')
+            };
+            
+            // Create a combined HTML structure that preserves all formats
+            let combinedHtml = '';
+            let innerContent = '\u200B'; // Zero-width space for cursor positioning
+            
+            // Build nested HTML structure from inside out
+            if (formatElements.italic) {
+              const className = formatElements.italic.getAttribute('class') || '';
+              const style = formatElements.italic.getAttribute('style') || '';
+              innerContent = `<em ${className ? `class="${className}"` : ''} ${style ? `style="${style}"` : ''}>${innerContent}</em>`;
+            }
+            
+            if (formatElements.underline) {
+              const className = formatElements.underline.getAttribute('class') || '';
+              const style = formatElements.underline.getAttribute('style') || '';
+              innerContent = `<u ${className ? `class="${className}"` : ''} ${style ? `style="${style}"` : ''}>${innerContent}</u>`;
+            }
+            
+            if (formatElements.strike) {
+              const className = formatElements.strike.getAttribute('class') || '';
+              const style = formatElements.strike.getAttribute('style') || '';
+              innerContent = `<s ${className ? `class="${className}"` : ''} ${style ? `style="${style}"` : ''}>${innerContent}</s>`;
+            }
+            
+            if (formatElements.bold) {
+              const className = formatElements.bold.getAttribute('class') || '';
+              const style = formatElements.bold.getAttribute('style') || '';
+              innerContent = `<strong ${className ? `class="${className}"` : ''} ${style ? `style="${style}"` : ''}>${innerContent}</strong>`;
+            }
+            
+            if (formatElements.font) {
+              const className = formatElements.font.getAttribute('class') || '';
+              const style = formatElements.font.getAttribute('style') || '';
+              innerContent = `<span ${className ? `class="${className}"` : ''} ${style ? `style="${style}"` : ''}>${innerContent}</span>`;
+            }
+            
+            // If we found any format to apply
+            if (innerContent !== '\u200B') {
+              combinedHtml = innerContent;
+              
+              // Replace the current line's content with the combined structure
+              currentLine.domNode.innerHTML = combinedHtml;
+              
+              setTimeout(() => {
+                // Set cursor position
+                try {
+                  // Find the innermost element that contains the zero-width space
+                  function findInnermostElement(element) {
+                    if (!element) return null;
+                    if (element.nodeType === 3 && element.textContent === '\u200B') {
+                      return element;
+                    }
+                    for (let i = 0; i < element.childNodes.length; i++) {
+                      const found = findInnermostElement(element.childNodes[i]);
+                      if (found) return found;
+                    }
+                    return null;
+                  }
+                  
+                  // Find the text node containing the zero-width space
+                  const textNode = findInnermostElement(currentLine.domNode);
+                  
+                  if (textNode) {
+                    const range = document.createRange();
+                    const sel = window.getSelection();
+                    
+                    range.setStart(textNode, 0);
+                    range.setEnd(textNode, 0);
+                    
+                    // Clear selection before setting new range (iOS requirement)
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                    
+                    // Force layout recalc for iOS
+                    currentLine.domNode.offsetHeight;
+                    
+                    // Update Quill's selection
+                    const newIndex = snow.getIndex(currentLine);
+                    snow.setSelection(newIndex, 0, 'user');
+                  } else {
+                    // Fallback if we can't find the text node
+                    const newIndex = snow.getIndex(currentLine);
+                    snow.setSelection(newIndex, 0, 'user');
+                  }
+                } catch (e) {
+                  console.warn('Selection update failed:', e);
+                  // Fallback for iOS: use Quill's selection only
+                  const newIndex = snow.getIndex(currentLine);
+                  snow.setSelection(newIndex, 0, 'user');
+                }
+              }, 10);
+            }
+          }
+        }
+      }
+    }
+
+
+
+  function filterOutTableFormats(formats) {
+    const tableKeys = ['table', 'tableCell', 'row', 'table-row', 'cell', 'cell-line', 'cell-row', 'cell-col'];
+    const result = {};
+    Object.keys(formats || {}).forEach(key => {
+      if (!tableKeys.includes(key)) {
+        result[key] = formats[key];
+      }
+    });
+    return result;
+  }
+
+
+  // Add a new function to update toolbar based on cell selection
+  function updateToolbarFromCell(e) {
+    // Only process if we clicked on a table cell
+    const cell = e.target.closest('td');
+    if (!cell) return;
+
+    // Get the cell's formats without modifying anything
+    const cellBlot = Quill.find(cell);
+    if (!cellBlot) return;
+
+    // Get the formats from the cell
+    const cellIndex = snow.getIndex(cellBlot);
+    const cellFormats = snow.getFormat(cellIndex, 1);
+
+    console.log("Cell formats detected:", cellFormats);
+
+    // Store current formats globally
+    window.currentCellFormats = cellFormats;
+
+    // DIRECTLY manipulate toolbar buttons without changing selection
+
+    // Format buttons (boolean formats)
+    const booleanFormats = ['bold', 'italic', 'underline', 'strike'];
+    booleanFormats.forEach(format => {
+      const button = document.querySelector(`.ql-${format}`);
+      if (button) {
+        // Force add ql-active class if format is true
+        if (cellFormats[format] === true) {
+          button.classList.add('ql-active');
+          console.log(`Added ql-active to ${format} button`);
+        } else {
+          button.classList.remove('ql-active');
+          console.log(`Removed ql-active from ${format} button`);
+        }
+      }
+    });
+
+    // Font dropdown
+    if (cellFormats.font) {
+      const fontPicker = document.querySelector('.ql-font');
+      const fontLabel = fontPicker?.querySelector('.ql-picker-label');
+      if (fontLabel) {
+        fontLabel.setAttribute('data-value', cellFormats.font);
+
+        // Update selected item in dropdown
+        const selectedItem = fontPicker.querySelector(`.ql-picker-item[data-value="${cellFormats.font}"]`);
+        if (selectedItem) {
+          // Remove selected from all items
+          fontPicker.querySelectorAll('.ql-picker-item').forEach(item => {
+            item.setAttribute('data-selected', 'false');
+          });
+          // Mark this one as selected
+          selectedItem.setAttribute('data-selected', 'true');
+        }
+      }
+    }
+
+    // Size dropdown
+    if (cellFormats.size) {
+      const sizePicker = document.querySelector('.ql-size');
+      const sizeLabel = sizePicker?.querySelector('.ql-picker-label');
+      if (sizeLabel) {
+        sizeLabel.setAttribute('data-value', cellFormats.size);
+
+        // Update selected item in dropdown
+        const selectedItem = sizePicker.querySelector(`.ql-picker-item[data-value="${cellFormats.size}"]`);
+        if (selectedItem) {
+          // Remove selected from all items
+          sizePicker.querySelectorAll('.ql-picker-item').forEach(item => {
+            item.setAttribute('data-selected', 'false');
+          });
+          // Mark this one as selected
+          selectedItem.setAttribute('data-selected', 'true');
+        }
+      }
+    }
+
+    // Color picker
+    if (cellFormats.color) {
+      const colorPicker = document.querySelector('.ql-color');
+      const colorLabel = colorPicker?.querySelector('.ql-picker-label');
+      if (colorLabel) {
+        colorLabel.style.color = cellFormats.color;
+        colorLabel.style.stroke = cellFormats.color;
+      }
+    }
+
+    // Background color picker
+    if (cellFormats.background) {
+      const bgPicker = document.querySelector('.ql-background');
+      const bgLabel = bgPicker?.querySelector('.ql-picker-label');
+      if (bgLabel) {
+        bgLabel.style.backgroundColor = cellFormats.background;
+        bgLabel.style.fill = cellFormats.background;
+      }
+    }
+
+    // Stop propagation to prevent other handlers from interfering
+    e.stopPropagation();
+  }
+
+  // Add event listeners with high priority (capture: true)
+  // This ensures our handler runs first, before other handlers
+  editor.addEventListener('click', updateToolbarFromCell, { capture: true });
+  editor.addEventListener('touchend', updateToolbarFromCell, { capture: true });
+
+  // MOBILE SPECIFIC: CREATE A COMPLETELY ISOLATED SOLUTION
+  // First, remove ALL previous event listeners to avoid conflicts
+  function cleanupEventListeners() {
+    try {
+      // Remove all previously attached event listeners
+      editor.removeEventListener('click', updateToolbarFromCell, { capture: true });
+      editor.removeEventListener('touchend', updateToolbarFromCell, { capture: true });
+      editor.removeEventListener('mousedown', onCellClick, { capture: true });
+      editor.removeEventListener('touchstart', onCellClick, { capture: true });
+    } catch (e) {
+      console.log("Cleanup error:", e);
+    }
+  }
+
+  // Run cleanup
+  cleanupEventListeners();
+
+  // Create ONE isolated function to handle cell clicks
+  function cellClickHandler(e) {
+    // Only process if we clicked on a table cell
+    const cell = e.target.closest('td');
+    if (!cell) return;
+
+    // Allow event to propagate normally
+    // This fixes the issue where stopping propagation broke other features
+
+    // Wait until after Quill has processed the click
+    setTimeout(() => {
+      try {
+        // Get the cell format data
+        const cellBlot = Quill.find(cell);
+        if (!cellBlot) return;
+
+        const cellIndex = snow.getIndex(cellBlot);
+        const cellFormats = snow.getFormat(cellIndex, 1);
+
+        console.log("CELL FORMATS:", cellFormats);
+
+        // ONLY update toolbar buttons - nothing else
+        // Use direct DOM manipulation with minimal code
+
+        // Bold
+        const boldBtn = document.querySelector('.ql-bold');
+        if (boldBtn) {
+          if (cellFormats.bold === true) {
+            boldBtn.classList.add('ql-active');
+          } else {
+            boldBtn.classList.remove('ql-active');
+          }
+        }
+
+        // Italic
+        const italicBtn = document.querySelector('.ql-italic');
+        if (italicBtn) {
+          if (cellFormats.italic === true) {
+            italicBtn.classList.add('ql-active');
+          } else {
+            italicBtn.classList.remove('ql-active');
+          }
+        }
+
+        // Underline
+        const underlineBtn = document.querySelector('.ql-underline');
+        if (underlineBtn) {
+          if (cellFormats.underline === true) {
+            underlineBtn.classList.add('ql-active');
+          } else {
+            underlineBtn.classList.remove('ql-active');
+          }
+        }
+
+        // Strike
+        const strikeBtn = document.querySelector('.ql-strike');
+        if (strikeBtn) {
+          if (cellFormats.strike === true) {
+            strikeBtn.classList.add('ql-active');
+          } else {
+            strikeBtn.classList.remove('ql-active');
+          }
+        }
+      } catch (err) {
+        console.error("Error updating toolbar:", err);
+      }
+    }, 10);
+  }
+
+  // Additionally, listen for format changes on the editor
+  // This ensures the toolbar state stays in sync with content
+  snow.on('text-change', function () {
+    const range = snow.getSelection();
+    if (range) {
+      const formats = snow.getFormat(range);
+
+      // Update button states based on selection format
+      const boldBtn = document.querySelector('.ql-bold');
+      if (boldBtn) boldBtn.classList.toggle('ql-active', formats.bold === true);
+
+      const italicBtn = document.querySelector('.ql-italic');
+      if (italicBtn) italicBtn.classList.toggle('ql-active', formats.italic === true);
+
+      const underlineBtn = document.querySelector('.ql-underline');
+      if (underlineBtn) underlineBtn.classList.toggle('ql-active', formats.underline === true);
+
+      const strikeBtn = document.querySelector('.ql-strike');
+      if (strikeBtn) strikeBtn.classList.toggle('ql-active', formats.strike === true);
+    }
+  });
+
+
+  (function () {
+    try {
+      // Clear interval timers
+      if (window.tessellationTimer) clearInterval(window.tessellationTimer);
+      if (window.tessellationPollingTimer) clearInterval(window.tessellationPollingTimer);
+
+      // Clean up event listeners - use this method to get around scope issues
+      const handlers = [
+        "updateToolbarFromCell", "cellClickHandler", "handleCellInteraction",
+        "handleCellClick", "tessellationCellHandler", "onCellClick",
+        "mobileHandler", "globalClickHandler", "handleCellSelect"
+      ];
+
+      handlers.forEach(function (handlerName) {
+        try {
+          const handler = window[handlerName];
+          if (typeof handler === 'function') {
+            document.removeEventListener('click', handler, true);
+            document.removeEventListener('touchstart', handler, true);
+            document.removeEventListener('mousedown', handler, true);
+            editor.removeEventListener('click', handler, true);
+            editor.removeEventListener('touchstart', handler, true);
+            editor.removeEventListener('mousedown', handler, true);
+          }
+        } catch (e) { /* ignore */ }
+      });
+
+      console.log("All previous code cleaned up");
+    } catch (e) {
+      console.log("Error during cleanup:", e);
+    }
+
+    // EXTREMELY SIMPLE APPROACH
+
+    // Track if user has manually deselected formats
+    const userDeselectedFormats = {
+      bold: false,
+      italic: false,
+      underline: false,
+      strike: false
+    };
+
+    // Helper to update button states
+    function setToolbarButtonStates(formats) {
+      if (!formats) return;
+
+      // Get button elements
+      const boldButton = document.querySelector('.ql-bold');
+      const italicButton = document.querySelector('.ql-italic');
+      const underlineButton = document.querySelector('.ql-underline');
+      const strikeButton = document.querySelector('.ql-strike');
+
+      // Update each button - set to directly modify the DOM without side effects
+      // Only update if the user hasn't manually deselected the format
+      if (boldButton && !userDeselectedFormats.bold)
+        boldButton.classList.toggle('ql-active', formats.bold === true);
+
+      if (italicButton && !userDeselectedFormats.italic)
+        italicButton.classList.toggle('ql-active', formats.italic === true);
+
+      if (underlineButton && !userDeselectedFormats.underline)
+        underlineButton.classList.toggle('ql-active', formats.underline === true);
+
+      if (strikeButton && !userDeselectedFormats.strike)
+        strikeButton.classList.toggle('ql-active', formats.strike === true);
+    }
+
+    // Get formats from a cell
+    function getCellFormats(cell) {
+      if (!cell) return null;
+
+      try {
+        const blot = Quill.find(cell);
+        if (!blot) return null;
+
+        const index = snow.getIndex(blot);
+        return snow.getFormat(index, 1);
+      } catch (e) {
+        console.error("Error getting cell formats:", e);
+        return null;
+      }
+    }
+
+    // Handle cell interactions
+    function onCellInteract(e) {
+      const cell = e.target.closest('td');
+      if (!cell) return;
+
+      console.log(`Cell ${e.type} detected`);
+
+      const formats = getCellFormats(cell);
+      if (formats) {
+        setToolbarButtonStates(formats);
+      }
+    }
+
+    // Set up toolbar button tracking
+    function setupToolbarTracking() {
+      const formatButtons = {
+        bold: document.querySelector('.ql-bold'),
+        italic: document.querySelector('.ql-italic'),
+        underline: document.querySelector('.ql-underline'),
+        strike: document.querySelector('.ql-strike')
+      };
+
+      Object.entries(formatButtons).forEach(([format, button]) => {
+        if (!button) return;
+
+        button.addEventListener('click', function () {
+          // Was it active before click?
+          const wasActive = button.classList.contains('ql-active');
+
+          // If active and clicked, user is turning it off
+          if (wasActive) {
+            userDeselectedFormats[format] = true;
+            console.log(`User deselected ${format}`);
+          } else {
+            userDeselectedFormats[format] = false;
+          }
+        });
+      });
+
+      console.log("Toolbar tracking set up");
+    }
+
+    // Add event listeners
+    document.addEventListener('mousedown', onCellInteract, true);
+    document.addEventListener('touchstart', onCellInteract, true);
+
+    // Set up toolbar tracking
+    setupToolbarTracking();
+
+    // Handle text changes
+    snow.on('text-change', function () {
+      // Reset deselection tracking on text changes
+      Object.keys(userDeselectedFormats).forEach(format => {
+        userDeselectedFormats[format] = false;
+      });
+
+      const range = snow.getSelection();
+      if (range) {
+        const formats = snow.getFormat(range);
+        setToolbarButtonStates(formats);
+      }
+    });
+
+    // Handle selection changes
+    snow.on('selection-change', function (range) {
+      if (!range) return;
+
+      try {
+        // Check if we're in a cell
+        const [leaf] = snow.getLeaf(range.index);
+        if (leaf && leaf.parent) {
+          const cell = leaf.parent.domNode.closest('td');
+          if (cell) {
+            const formats = getCellFormats(cell);
+            setToolbarButtonStates(formats);
+          }
+        }
+      } catch (e) {
+        console.error("Error in selection change:", e);
+      }
+    });
+  })();
+
+
+
+  // Create a better scroll-to-position function that works on first click
+  function directScrollToWord(clickX, clickY) {
+    // Get element at the exact click position
+    const element = document.elementFromPoint(clickX, clickY);
+    if (!element) return;
+    console.log('Clicked on element:', element.tagName);
+    // Find the parent element with meaningful text content
+    let targetElement = element;
+    let tries = 0;
+    while (targetElement &&
+      tries < 3 &&
+      (!targetElement.textContent || targetElement.textContent.trim() === '')) {
+      targetElement = targetElement.parentElement;
+      tries++;
+    }
+    // Fall back to the clicked element if needed
+    if (!targetElement || targetElement === document.body) {
+      targetElement = element;
+    }
+    // Force immediate scroll - this is key for first-click response
+    targetElement.scrollIntoView({
+      behavior: 'auto', // Use 'auto' for immediate response
+      block: 'center',
+      inline: 'nearest'
+    });
+
+    // Get the Quill instance and focus it
+    const quill = Quill.find(document.getElementById('editor'));
+    if (quill) {
+      // Force focus after a very small delay
+      setTimeout(() => quill.focus(), 10);
+    }
+  }
+  // Capture clicks using the capture phase (runs before regular handlers)
+  document.getElementById('editor').addEventListener('click', function (event) {
+    // Get the exact click coordinates
+    const clickX = event.clientX;
+    const clickY = event.clientY;
+    // Immediately scroll to the word
+    directScrollToWord(clickX, clickY);
+    // Don't stop the event from propagating - let Quill handle selection
+  }, true); // true = capture phase, runs before regular handlers
+  console.log('First-click scroll handler installed');
+
+  // Direct patch to Quill's format handling mechanism
+  (function () {
+    console.log("Patching Quill to prevent BR tags on empty lines");
+    // Helper function to create a formatted span with proper formatting
+    function createFormattedSpan(formats) {
+      // Create base span with zero-width space
+      const span = document.createElement('span');
+      span.innerHTML = '&#8203;'; // Zero-width space
+      // Apply font class if available
+      if (formats.font) {
+        span.classList.add('ql-font-' + formats.font);
+      }
+      // Build style attribute with all formats
+      let style = '';
+      if (formats.size) {
+        style += `font-size: ${formats.size};`;
+      }
+      if (formats.color) {
+        style += `color: ${formats.color};`;
+      }
+      if (formats.background) {
+        style += `background-color: ${formats.background};`;
+      }
+      if (style) {
+        span.setAttribute('style', style);
+      }
+      return span;
+    }
+    // Helper function to wrap span with formatting elements (bold, italic, etc.)
+    function wrapWithFormatElements(element, formats) {
+      let result = element;
+      // Apply each format by wrapping the element
+      if (formats.bold) {
+        const boldElement = document.createElement('strong');
+        boldElement.appendChild(result);
+        result = boldElement;
+      }
+      if (formats.italic) {
+        const italicElement = document.createElement('em');
+        italicElement.appendChild(result);
+        result = italicElement;
+      }
+      if (formats.underline) {
+        const underlineElement = document.createElement('u');
+        underlineElement.appendChild(result);
+        result = underlineElement;
+      }
+      if (formats.strike) {
+        const strikeElement = document.createElement('s');
+        strikeElement.appendChild(result);
+        result = strikeElement;
+      }
+      return result;
+    }
+    // Helper function to replace content of a node with formatted content
+    function replaceWithFormattedContent(targetNode, formats) {
+      // Create formatted span
+      const span = createFormattedSpan(formats);
+      // Apply wrapping elements for bold, italic, etc.
+      const formattedElement = wrapWithFormatElements(span, formats);
+      // Replace content
+      targetNode.innerHTML = '';
+      targetNode.appendChild(formattedElement);
+      return span; // Return the inner span for reference
+    }
+    function isListItem(node) {
+      return node.tagName === 'LI' ||
+        node.closest('li') !== null ||
+        node.closest('ol') !== null ||
+        node.closest('ul') !== null;
+    }
+    // 2. Add a function to detect table elements in the format method
+    function isTableElement(node) {
+        return node.tagName === 'TABLE' ||
+        node.tagName === 'TR' ||
+        node.tagName === 'TD' ||
+        node.tagName === 'TH' ||
+        node.closest('table') !== null;
+    }
+    // Implement a custom click handler for empty lines
+    document.querySelector('.ql-editor').addEventListener('click', (e) => {
+      // Only proceed if we're not in a keyboard operation
+      if (isKeyboardOperation) return;
+      // Get the current selection
+      const selection = snow.getSelection();
+      if (!selection) return;
+      // Get the current line
+      const [line] = snow.getLine(selection.index);
+      if (!line || !line.domNode) return;
+      // Check if this is an empty line (just a br or empty)
+      const isEmpty = line.domNode.innerHTML === '<br>' ||
+        line.domNode.textContent.trim() === '' ||
+        line.domNode.textContent === '\u200B';
+      if (isEmpty) {
+        console.log('Empty line click detected - applying formats');
+        // Get formats from prior non-empty line
+        let formatToApply = null;
+        // Look for a previous non-empty line
+        let prevLine = line.prev;
+        let prevFormat = null;
+        while (prevLine && !prevFormat) {
+          const prevIndex = snow.getIndex(prevLine);
+          const inner = prevLine.domNode.innerHTML.trim();
+          if (inner !== '<br>' && prevLine.domNode.textContent.trim() !== '') {
+            prevFormat = snow.getFormat(prevIndex);
+            break;
+          }
+          prevLine = prevLine.prev;
+        }
+        if (prevFormat && Object.keys(prevFormat).length > 0) {
+          formatToApply = prevFormat;
+        } else {
+          formatToApply = lastUsedFormats || globalLastUsedFormat;
+        }
+        console.log("formatToApply", formatToApply);
+        // Apply formats directly without mutation observer
+        replaceWithFormattedContent(line.domNode, formatToApply);
+        // Update Quill's internal state
+        snow.formatText(selection.index, 1, formatToApply, Quill.sources.USER);
+        snow.setSelection(selection.index, 0, Quill.sources.SILENT);
+        updateToolbarUI(formatToApply);
+      }
+    });
+   
+  });
+
+function formatEmptyLinesAfterEnter(delta, quill, lastFormats) {
+    // IMPORTANT: Only process if this IS an Enter key press
+    const isEnterKeyPress = delta && delta.ops && delta.ops.some(op => op.insert === '\n');
+    // Only process if this is an Enter key press
+    if (isEnterKeyPress) {
+     setTimeout(() => {
+      // Get all paragraphs with just a BR tag and convert them
+      const editor = document.querySelector('.ql-editor');
+      if (editor) {
+       // Careful approach: only convert br tags to spans, don't create new lines
+       editor.querySelectorAll('p').forEach(p => {
+        if (p.innerHTML === '<br>' || p.textContent.trim() === '') {
+         // Apply formatting to line without creating any new content
+         const blot = Quill.find(p);
+         if (blot) {
+          const index = quill.getIndex(blot);
+          // Just apply formatting to existing line
+          const formats = filterOutTableFormats(lastFormats);
+          // Only modify if this is truly an empty line with a BR tag
+          if (p.innerHTML === '<br>') {
+           // Create a span with zero-width space instead of BR
+           const span = document.createElement('span');
+           // Apply formatting to the span
+           if (formats.font) {
+            span.classList.add(`ql-font-${formats.font}`);
+           }
+           if (formats.size) {
+            const sizeValue = formats.size.toString().includes('pt') ?
+             formats.size : `${formats.size}`;
+            span.style.setProperty('font-size', sizeValue, 'important');
+           }
+           if (formats.color) {
+            span.style.color = formats.color;
+           }
+           // Add zero-width space to maintain cursor positioning
+           span.innerHTML = '&#8203;';
+           // Replace BR with span - DON'T add any new elements
+           p.innerHTML = '';
+           p.appendChild(span);
+          }
+         }
+        }
+       });
+      }
+     }, 0);
+    }
+   }
+ 
+</script>

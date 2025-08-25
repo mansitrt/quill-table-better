@@ -206,19 +206,46 @@ function getCopyTd(html: string) {
 }
 
 function getCorrectBounds(target: Element, container: Element) {
-  const targetBounds = target.getBoundingClientRect();
-  const containerBounds = container.getBoundingClientRect();
-  const left = targetBounds.left - containerBounds.left - container.scrollLeft;
-  const top = targetBounds.top - containerBounds.top - container.scrollTop;
-  const width = targetBounds.width;
-  const height = targetBounds.height;
-  return {
-    left,
-    top,
-    width,
-    height,
-    right: left + width,
-    bottom: top + height
+  // Add null checks to prevent errors when elements are null or undefined
+  if (!target || !container) {
+    console.warn('getCorrectBounds: target or container is null');
+    // Return default values to prevent further errors
+    return {
+      left: 0,
+      top: 0,
+      width: 0,
+      height: 0,
+      right: 0,
+      bottom: 0
+    };
+  }
+
+  try {
+    const targetBounds = target.getBoundingClientRect();
+    const containerBounds = container.getBoundingClientRect();
+    const left = targetBounds.left - containerBounds.left - container.scrollLeft;
+    const top = targetBounds.top - containerBounds.top - container.scrollTop;
+    const width = targetBounds.width;
+    const height = targetBounds.height;
+    return {
+      left,
+      top,
+      width,
+      height,
+      right: left + width,
+      bottom: top + height
+    };
+  } catch (error) {
+    console.error('Error in getCorrectBounds:', error);
+    // Return default values to prevent further errors
+    return {
+      left: 0,
+      top: 0,
+      width: 0,
+      height: 0,
+      right: 0,
+      bottom: 0
+    };
   }
 }
 

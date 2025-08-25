@@ -578,6 +578,13 @@ ol.table-list-container {
     transform: translate(12px, -50%);
   }
 }
+/* Table horizontal scrolling container */
+.ql-table-scroll-container {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+
 // animation
 @keyframes ql-table-input-shake {
   20% { transform: translateX(-2px); }

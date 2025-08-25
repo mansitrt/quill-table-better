@@ -328,15 +328,46 @@ class TableTemporary extends Block {
 
   static create(value: Props) {
     const node = super.create();
-    const keys = Object.keys(value);
-    const className = TableContainer.defaultClassName;
-    for (const key of keys) {
-      if (key === 'data-class' && !~value[key].indexOf(className)) {
-        node.setAttribute(key, `${className} ${value[key]}`);
-      } else {
-        node.setAttribute(key, value[key]);
-      }
+    
+    // Add robust null/undefined check for value
+    if (!value || typeof value !== 'object') {
+      return node;
     }
+    
+    try {
+      const keys = Object.keys(value);
+      const className = TableContainer.defaultClassName;
+      
+      for (const key of keys) {
+        try {
+          // Skip invalid attribute names (numbers, empty strings, etc.)
+          if (!key || typeof key !== 'string' || /^\d+$/.test(key)) {
+            console.warn(`Skipping invalid attribute name: ${key}`);
+            continue;
+          }
+          
+          const attrValue = value[key];
+          // Skip if attribute value is not a string or number
+          if (attrValue === undefined || attrValue === null) {
+            continue;
+          }
+          
+          // Convert value to string to ensure it's a valid attribute value
+          const stringValue = String(attrValue);
+          
+          if (key === 'data-class' && !~stringValue.indexOf(className)) {
+            node.setAttribute(key, `${className} ${stringValue}`);
+          } else {
+            node.setAttribute(key, stringValue);
+          }
+        } catch (error) {
+          console.error(`Error setting attribute ${key}:`, error);
+        }
+      }
+    } catch (error) {
+      console.error('Error in TableTemporary.create:', error);
+    }
+    
     return node;
   }
 
@@ -491,7 +522,7 @@ class TableContainer extends Container {
         const [formats] = getCellFormats(prev);
         const { right: position, width } = prev.domNode.getBoundingClientRect();
         const { next, rowspan } = weakMap.get(prev);
-        this.setColumnCells(next, columnCells, { position, width }, formats, rowspan, prev);
+        this.setColumnCells(next, columnCells, { position }, formats, rowspan, prev);
       }
       for (const [row, formats, ref, prev] of columnCells) {
         const cell = this.scroll.create(TableCell.blotName, formats) as TableCell;
@@ -606,12 +637,17 @@ class TableContainer extends Container {
     const rows = this.descendants(TableRow);
     for (const row of rows) {
       if (isLast && offset > 0) {
-        const id = row.children.tail.domNode.getAttribute('data-row');
-        columnCells.push([row, id, null, null]);
+        if (row.children && row.children.tail && row.children.tail.domNode) {
+          const id = row.children.tail.domNode.getAttribute('data-row') || '';
+          columnCells.push([row, id, null, null]);
+        } else {
+          console.warn('Skipping row with null children or domNode in insertColumn');
+        }
       } else {
-        this.setColumnCells(row, columnCells, { position, width: w });
+        this.setColumnCells(row, columnCells, { position });
       }
     }
+    
     if (colgroup) {
       if (isLast) {
         cols.push([colgroup, null]);
@@ -648,7 +684,7 @@ class TableContainer extends Container {
   }
 
   insertCol(colgroup: TableColgroup, ref: TableCol | null) {
-    const col = this.scroll.create(TableCol.blotName, { width: `${CELL_DEFAULT_WIDTH}` });
+    const col = this.scroll.create(TableCol.blotName);
     colgroup.insertBefore(col, ref);
   }
 
@@ -659,7 +695,7 @@ class TableContainer extends Container {
       tbody.insertBefore(row, null);
     }
     const colgroup = this.colgroup();
-    const formats = colgroup ? { 'data-row': id } : { 'data-row': id, width: `${CELL_DEFAULT_WIDTH}` };
+    const formats = colgroup ? { 'data-row': id } : { 'data-row': id };
     const isTableRow = row.statics.blotName === TableRow.blotName;
     const cellBlotName = isTableRow ? TableCell.blotName : TableTh.blotName;
     const blockBlotName = isTableRow ? TableCellBlock.blotName : TableThBlock.blotName;
@@ -793,13 +829,13 @@ class TableContainer extends Container {
   private setColumnCells(
     row: TableRow,
     columnCells: [TableRow, Props | string, TableCell, TableCell][],
-    bounds: { position: number, width: number },
+    bounds: { position: number },
     formats?: Props,
     rowspan?: number,
     prev?: TableCell
   ) {
     if (!row) return;
-    const { position, width } = bounds;
+    const { position } = bounds;
     let ref = row.children.head;
     while (ref) {
       const { left, right } = ref.domNode.getBoundingClientRect();
@@ -815,7 +851,7 @@ class TableContainer extends Container {
         columnCells.push([row, props, null, prev]);
         break;
       // rowspan > 1 (insertLeft, position + w is left)
-      } else if (Math.abs(left - position - width) <= DEVIATION) {
+      } else if (Math.abs(left - position) <= DEVIATION) {
         columnCells.push([row, props, ref, prev]);
         break;
       // rowspan > 1 (position between left and right, rowspan++)

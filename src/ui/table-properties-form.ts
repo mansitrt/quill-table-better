@@ -303,6 +303,8 @@ class TablePropertiesForm {
       // debounce
       const value = (e.target as HTMLInputElement).value;
       valid && this.switchHidden(status, valid(value));
+      console.log("valid", valid);
+      console.log("switchHidden", this.switchHidden(status, valid(value)));
       this.updateInputStatus(wrapper, valid && !valid(value));
       this.setAttribute(propertyName, value, container);
     });
@@ -765,7 +767,7 @@ class TablePropertiesForm {
     const list = container.querySelector(selectors);
     if (!list) return;
     const lists = Array.from(list.querySelectorAll('li'));
-    for (const list of lists) {
+    for (const list of lists) { 
       list.classList.remove(`ql-table-${type}-selected`);
     }
     const selected = lists.find(li => {

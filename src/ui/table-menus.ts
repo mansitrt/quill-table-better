@@ -48,6 +48,7 @@ import {
   DEVIATION,
   TABLE_PROPERTIES
 } from '../config';
+import Table from '../quill-table-better';
 
 interface Children {
   [propName: string]: {
@@ -113,12 +114,12 @@ function getMenusConfig(useLanguage: UseLanguageHandler, menus?: string[]): Menu
             this.deleteColumn();
           }
         },
-        select: {
-          content: useLanguage('selCol'),
-          handler() {
-            this.selectColumn();
-          }
-        }
+        // select: {
+        //   content: useLanguage('selCol'),
+        //   handler() {
+        //     this.selectColumn();
+        //   }
+        // }
       }
     },
     row: {
@@ -159,35 +160,12 @@ function getMenusConfig(useLanguage: UseLanguageHandler, menus?: string[]): Menu
             this.deleteRow();
           }
         },
-        select: {
-          content: useLanguage('selRow'),
-          handler() {
-            this.selectRow();
-          }
-        }
-      }
-    },
-    merge: {
-      content: useLanguage('mCells'),
-      icon: mergeIcon,
-      handler(list: HTMLUListElement, tooltip: HTMLDivElement) {
-        this.toggleAttribute(list, tooltip);
-      },
-      children: {
-        merge: {
-          content: useLanguage('mCells'),
-          handler() {
-            this.mergeCells();
-            this.updateMenus();
-          }
-        },
-        split: {
-          content: useLanguage('sCell'),
-          handler() {
-            this.splitCell();
-            this.updateMenus();
-          }
-        }
+        // select: {
+        //   content: useLanguage('selRow'),
+        //   handler() {
+        //     this.selectRow();
+        //   }
+        // }
       }
     },
     table: {
@@ -203,20 +181,20 @@ function getMenusConfig(useLanguage: UseLanguageHandler, menus?: string[]): Menu
         this.hideMenus();
       }
     },
-    cell: {
-      content: useLanguage('cellProps'),
-      icon: cellIcon,
-      handler(list: HTMLUListElement, tooltip: HTMLDivElement) {
-        const { selectedTds } = this.tableBetter.cellSelection;
-        const attribute =
-          selectedTds.length > 1
-            ? this.getSelectedTdsAttrs(selectedTds)
-            : this.getSelectedTdAttrs(selectedTds[0]);
-        this.toggleAttribute(list, tooltip);
-        this.tablePropertiesForm = new TablePropertiesForm(this, { attribute, type: 'cell' });
-        this.hideMenus();
-      }
-    },
+    // cell: {
+    //   content: useLanguage('cellProps'),
+    //   icon: cellIcon,
+    //   handler(list: HTMLUListElement, tooltip: HTMLDivElement) {
+    //     const { selectedTds } = this.tableBetter.cellSelection;
+    //     const attribute =
+    //       selectedTds.length > 1
+    //         ? this.getSelectedTdsAttrs(selectedTds)
+    //         : this.getSelectedTdAttrs(selectedTds[0]);
+    //     this.toggleAttribute(list, tooltip);
+    //     this.tablePropertiesForm = new TablePropertiesForm(this, { attribute, type: 'cell' });
+    //     this.hideMenus();
+    //   }
+    // },
     wrap: {
       content: useLanguage('insParaOTbl'),
       icon: wrapIcon,
@@ -246,18 +224,10 @@ function getMenusConfig(useLanguage: UseLanguageHandler, menus?: string[]): Menu
       }
     }
   };
-  const EXTRA: MenusDefaults = {
-    copy: {
-      content: useLanguage('copyTable'),
-      icon: copyIcon,
-      handler() {
-        this.copyTable();
-      }
-    }
-  };
+
   if (menus?.length) {
     return Object.values(menus).reduce((config: MenusDefaults, menu: string | CustomMenu) => {
-      const ALL_MENUS = Object.assign({}, DEFAULT, EXTRA);
+      const ALL_MENUS = Object.assign({}, DEFAULT);
       if (typeof menu === 'string') {
         config[menu] = ALL_MENUS[menu];
       }
@@ -270,6 +240,7 @@ function getMenusConfig(useLanguage: UseLanguageHandler, menus?: string[]): Menu
   return DEFAULT;
 }
 
+
 class TableMenus {
   quill: Quill;
   table: HTMLElement | null;
@@ -280,6 +251,9 @@ class TableMenus {
   tableBetter: QuillTableBetter;
   tablePropertiesForm: TablePropertiesForm;
   tableHeaderRow: HTMLElement | null;
+  private keyboardWasVisible = false;
+  private lastWindowHeight = 0;
+
   constructor(quill: Quill, tableBetter?: QuillTableBetter) {
     this.quill = quill;
     this.table = null;
@@ -290,8 +264,24 @@ class TableMenus {
     this.tablePropertiesForm = null;
     this.tableHeaderRow = null;
     this.quill.root.addEventListener('click', this.handleClick.bind(this));
+    
+    // Add keyboard event listeners to detect when keyboard is shown/hidden
+    if (typeof window !== 'undefined') {
+      // For iOS devices, we can detect keyboard visibility changes by listening to window resize events
+      window.addEventListener('resize', this.handleWindowResize.bind(this));
+    }
+    
     this.root = this.createMenus();
   }
+
+  isPerformingTableOperation = false;
+
+  formatsToPersist = [
+    'bold', 'italic', 'underline', 'strike',
+    'font', 'size',
+    'color', 'background',
+    'align'
+  ];
 
   convertToRow() {
     const tableBlot = Quill.find(this.table) as TableContainer;
@@ -478,10 +468,45 @@ class TableMenus {
     const tableBlot = Quill.find(this.table) as TableContainer;
     if (!tableBlot) return;
     const offset = tableBlot.offset(this.quill.scroll);
+    const index = this.quill.getIndex(tableBlot);
     tableBlot.remove();
     this.tableBetter.hideTools();
     this.quill.setSelection(offset - 1, 0, Quill.sources.USER);
+
+       // Editor is empty, set default font and size
+       // Use stored defaults or fall back to reasonable value
+       // Apply default font and size formatting
+    const tableModule = this.quill.getModule('table') as Table;
+        
+    // Get default formats from the table module
+    const defaultFont = tableModule?.defaultFormats?.font || tableModule?.lastFormat?.font || 'Helvetica';
+    const defaultSize = tableModule?.defaultFormats?.size || tableModule?.lastFormat?.size || '18pt';
+
+ 
+       // Apply default formats at current cursor position
+       // Use silent source for the first formatting to avoid multiple updates
+       this.quill.format('font', defaultFont, Quill.sources.SILENT);
+       this.quill.format('size', defaultSize, Quill.sources.USER); // USER source for the last one to trigger an update
+ 
+    // Apply to a small range to ensure formats stick
+    const range = this.quill.getSelection() || { index: index, length: 1 };
+    this.quill.formatText(range.index, Math.max(1, range.length), {
+      font: defaultFont,
+      size: defaultSize
+    }, Quill.sources.USER);
+
+    const fontPickerLabel = document.querySelector('.ql-font .ql-picker-label');
+    const sizePickerLabel = document.querySelector('.ql-size .ql-picker-label');
+    if (fontPickerLabel) {
+      fontPickerLabel.classList.add("ql-active");
+      fontPickerLabel.setAttribute('data-value', `${defaultFont}`);
+    }
+    if (sizePickerLabel) {
+      sizePickerLabel.classList.add("ql-active");
+      sizePickerLabel.setAttribute('data-value', `${defaultSize}`);
+    }
   }
+
 
   destroyTablePropertiesForm() {
     if (!this.tablePropertiesForm) return;
@@ -756,26 +781,127 @@ class TableMenus {
     }, []);
   }
 
+  handleWindowResize() {
+    const currentHeight = window.innerHeight;
+    
+    // If height decreased significantly, keyboard is likely shown
+    if (this.lastWindowHeight > 0 && this.lastWindowHeight - currentHeight > 150) {
+      this.keyboardWasVisible = true;
+    }
+    
+    // If height increased significantly after keyboard was visible, keyboard is likely hidden
+    if (this.keyboardWasVisible && currentHeight - this.lastWindowHeight > 150) {
+      this.keyboardWasVisible = false;
+      
+      // Ensure menu container is visible after keyboard is hidden
+      if (this.table) {
+        // Force a delay to ensure proper rendering after keyboard hide
+        setTimeout(() => {
+          try {
+            // Get the last clicked cell from the tableBetter module
+            const lastClickedCell = this.tableBetter.lastClickedCell;
+            
+            // If we have a valid last clicked cell, select it
+            if (lastClickedCell && lastClickedCell.isConnected) {
+              // First clear any existing selection
+              this.tableBetter.cellSelection.clearSelected();
+              
+              // Then programmatically select the cell
+              this.tableBetter.cellSelection.setSelectedTds([lastClickedCell]);
+              
+              console.log('Re-selected cell after keyboard hide:', lastClickedCell);
+              
+              // Show menus and update their position
+              this.showMenus();
+              this.updateMenus(this.table);
+              
+              // Make sure dropdowns are visible if they were open before
+              setTimeout(() => {
+                const dropdowns = document.querySelectorAll('.ql-table-dropdown');
+                dropdowns.forEach(dropdown => {
+                  if (dropdown.classList.contains('ql-hidden')) {
+                    dropdown.classList.remove('ql-hidden');
+                  }
+                });
+              }, 50);
+            } else {
+              // Just show menus without cell selection
+              this.showMenus();
+              this.updateMenus(this.table);
+            }
+          } catch (error) {
+            console.error('Error restoring cell selection after keyboard hide:', error);
+            // Fallback to just showing menus
+            this.showMenus();
+            this.updateMenus(this.table);
+          }
+        }, 300);
+      }
+    }
+    
+    this.lastWindowHeight = currentHeight;
+  }
+
   handleClick(e: MouseEvent) {
     if (!this.quill.isEnabled()) return;
     const table = (e.target as Element).closest('table');
     if (table && !this.quill.root.contains(table)) return;
+    
+    // Store the clicked element to check if it's a menu icon
+    const clickedElement = e.target as Element;
+    const isMenuIconClick = clickedElement.closest('.ql-table-dropdown') !== null;
+    
+    // Save current cell selection before any UI changes
+    const currentSelectedTds = [...this.tableBetter.cellSelection.selectedTds];
+    const hasSelection = currentSelectedTds.length > 0;
+    
     this.prevList && this.prevList.classList.add('ql-hidden');
     this.prevTooltip && this.prevTooltip.classList.remove('ql-table-tooltip-hidden');
     this.prevList = null;
     this.prevTooltip = null;
+    
+    // Check if we're on iOS and the keyboard might be visible
+    const isIOS = typeof window !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const windowHeight = window.innerHeight;
+    const keyboardLikelyVisible = isIOS && windowHeight < window.outerHeight * 0.8;
+    
     if (!table && !this.tableBetter.cellSelection.selectedTds.length) {
       this.hideMenus();
       this.destroyTablePropertiesForm();
       return;
     } else {
       if (this.tablePropertiesForm) return;
+      
+      // Always show menus when clicking on a table or menu icon
       this.showMenus();
-      this.updateMenus(table);
-      if (
-        (table && !table.isEqualNode(this.table)) ||
-        this.scroll
-      ) {
+      
+      // If clicking on a table cell, update the lastClickedCell reference
+      const cell = clickedElement.closest('td, th');
+      if (cell && !isMenuIconClick) {
+        this.tableBetter.lastClickedCell = cell as HTMLElement;
+        console.log('Updated last clicked cell:', cell);
+      }
+      
+      // If on iOS with keyboard visible and we had a previous selection, restore it
+      if (keyboardLikelyVisible && hasSelection && currentSelectedTds[0]?.isConnected) {
+        // Delay the restoration to allow keyboard to hide first
+        setTimeout(() => {
+          try {
+            // Check if the elements are still valid
+            const validTds = currentSelectedTds.filter(td => td && td.isConnected);
+            if (validTds.length > 0) {
+              this.tableBetter.cellSelection.setSelectedTds(validTds);
+            }
+            this.updateMenus(table);
+          } catch (error) {
+            console.error('Error restoring cell selection:', error);
+          }
+        }, 300);
+      } else {
+        this.updateMenus(table);
+      }
+      
+      if ((table && !table.isEqualNode(this.table)) || this.scroll) {
         this.updateScroll(false);
       }
       this.table = table;
@@ -787,40 +913,161 @@ class TableMenus {
   }
 
   insertColumn(td: HTMLTableColElement, offset: number) {
-    const { left, right, width } = td.getBoundingClientRect();
-    const tdBlot = Quill.find(td) as TableCell;
-    const tableBlot = tdBlot.table();
-    const isLast = td.parentElement.lastChild.isEqualNode(td);
-    const position = offset > 0 ? right : left;
-    tableBlot.insertColumn(position, isLast, width, offset);
-    this.quill.scrollSelectionIntoView();
+    try {
+      // Check if td is valid
+      if (!td || !td.isConnected) {
+        console.warn('Cannot insert column: td element is null, undefined, or disconnected');
+        return;
+      }
+      
+      // Safely get bounding client rect
+      let left = 0, right = 0, width = 0;
+      try {
+        const rect = td.getBoundingClientRect();
+        left = rect.left;
+        right = rect.right;
+        width = rect.width;
+      } catch (error) {
+        console.error('Error getting bounding client rect:', error);
+        return;
+      }
+      
+      // Find the tdBlot
+      const tdBlot = Quill.find(td) as TableCell;
+      if (!tdBlot) {
+        console.warn('Cannot insert column: tdBlot not found');
+        return;
+      }
+      
+      // Get the table blot
+      const tableBlot = tdBlot.table();
+      if (!tableBlot) {
+        console.warn('Cannot insert column: tableBlot not found');
+        return;
+      }
+      
+      // Check if parentElement exists
+      if (!td.parentElement) {
+        console.warn('Cannot insert column: td.parentElement is null');
+        return;
+      }
+      
+      // Check if lastChild exists
+      if (!td.parentElement.lastChild) {
+        console.warn('Cannot insert column: td.parentElement.lastChild is null');
+        return;
+      }
+      
+      const isLast = td.parentElement.lastChild.isEqualNode(td);
+      const position = offset > 0 ? right : left;
+      
+      // Insert the column
+      tableBlot.insertColumn(position, isLast, width, offset);
+      this.quill.scrollSelectionIntoView();
+    } catch (error) {
+      console.error('Error inserting column:', error);
+    }
   }
 
   insertParagraph(offset: number) {
     const blot = Quill.find(this.table) as TableContainer;
     const index = this.quill.getIndex(blot);
     const length = offset > 0 ? blot.length() : 0;
+
+    
     const delta = new Delta()
       .retain(index + length)
       .insert('\n');
     this.quill.updateContents(delta, Quill.sources.USER);
     this.quill.setSelection(index + length, Quill.sources.SILENT);
-    this.tableBetter.hideTools();
-    this.quill.scrollSelectionIntoView();
+   
+    // Apply default font and size formatting
+    const tableModule = this.quill.getModule('table') as Table;
+        
+    // Get default formats from the table module
+    const defaultFont = tableModule?.defaultFormats?.font || tableModule?.lastFormat?.font || 'Helvetica';
+    const defaultSize = tableModule?.defaultFormats?.size || tableModule?.lastFormat?.size || '18pt';
+
+ 
+       // Apply default formats at current cursor position
+       // Use silent source for the first formatting to avoid multiple updates
+       this.quill.format('font', defaultFont, Quill.sources.SILENT);
+       this.quill.format('size', defaultSize, Quill.sources.USER); // USER source for the last one to trigger an update
+ 
+    // Apply to a small range to ensure formats stick
+    const range = this.quill.getSelection() || { index: index, length: 1 };
+    this.quill.formatText(range.index, Math.max(1, range.length), {
+      font: defaultFont,
+      size: defaultSize
+    }, Quill.sources.USER);
+
+    const fontPickerLabel = document.querySelector('.ql-font .ql-picker-label');
+    const sizePickerLabel = document.querySelector('.ql-size .ql-picker-label');
+    if (fontPickerLabel) {
+      fontPickerLabel.classList.add("ql-active");
+      fontPickerLabel.setAttribute('data-value', `${defaultFont}`);
+    }
+    if (sizePickerLabel) {
+      sizePickerLabel.classList.add("ql-active");
+      sizePickerLabel.setAttribute('data-value', `${defaultSize}`);
+    }
   }
 
   insertRow(td: HTMLTableColElement, offset: number) {
-    const tdBlot = Quill.find(td) as TableCell;
-    const index = tdBlot.rowOffset();
-    const tableBlot = tdBlot.table();
-    const isTh = tdBlot.statics.blotName === TableTh.blotName;
-    if (offset > 0) {
-      const rowspan = ~~td.getAttribute('rowspan') || 1;
-      tableBlot.insertRow(index + offset + rowspan - 1, offset, isTh);
-    } else {
-      tableBlot.insertRow(index + offset, offset, isTh);
+    try {
+      // Check if td is valid
+      if (!td || !td.isConnected) {
+        console.warn('Cannot insert row: td element is null, undefined, or disconnected');
+        return;
+      }
+      
+      // Find the tdBlot
+      const tdBlot = Quill.find(td) as TableCell;
+      if (!tdBlot) {
+        console.warn('Cannot insert row: tdBlot not found');
+        return;
+      }
+      
+      // Get row offset
+      const index = tdBlot.rowOffset();
+      if (index === null || index === undefined) {
+        console.warn('Cannot insert row: invalid row index');
+        return;
+      }
+      
+      // Get table blot
+      const tableBlot = tdBlot.table();
+      if (!tableBlot) {
+        console.warn('Cannot insert row: tableBlot not found');
+        return;
+      }
+      
+      // Check if tdBlot.statics exists
+      if (!tdBlot.statics) {
+        console.warn('Cannot insert row: tdBlot.statics is undefined');
+        return;
+      }
+      
+      const isTh = tdBlot.statics.blotName === TableTh.blotName;
+      
+      if (offset > 0) {
+        // Safely get rowspan attribute
+        let rowspan = 1;
+        try {
+          rowspan = td.getAttribute('rowspan') ? parseInt(td.getAttribute('rowspan'), 10) || 1 : 1;
+        } catch (error) {
+          console.warn('Error parsing rowspan attribute:', error);
+        }
+        
+        tableBlot.insertRow(index + offset + rowspan - 1, offset, isTh);
+      } else {
+        tableBlot.insertRow(index + offset, offset, isTh);
+      }
+      
+      this.quill.scrollSelectionIntoView();
+    } catch (error) {
+      console.error('Error inserting row:', error);
     }
-    this.quill.scrollSelectionIntoView();
   }
 
   mergeCells() {
@@ -911,6 +1158,16 @@ class TableMenus {
 
   showMenus() {
     this.root.classList.remove('ql-hidden');
+    
+    // If we're on iOS, ensure any active cell selection is maintained
+    if (typeof window !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent)) {
+      const lastClickedCell = this.tableBetter.lastClickedCell;
+      if (lastClickedCell && lastClickedCell.isConnected && 
+          this.tableBetter.cellSelection.selectedTds.length === 0) {
+        // If we have a last clicked cell but no current selection, restore the selection
+        this.tableBetter.cellSelection.setSelectedTds([lastClickedCell]);
+      }
+    }
   }
 
   splitCell() {
@@ -976,10 +1233,36 @@ class TableMenus {
       this.prevTooltip.classList.remove('ql-table-tooltip-hidden');
     }
     if (!list) return;
-    list.classList.toggle('ql-hidden');
-    tooltip.classList.toggle('ql-table-tooltip-hidden');
-    this.prevList = list;
-    this.prevTooltip = tooltip;
+    
+    // Check if we're showing a dropdown (not hiding)
+    const isShowing = list.classList.contains('ql-hidden');
+    
+    if (isShowing) {
+      // When showing dropdown, add a small delay to allow keyboard to close
+      // Also ensure the menu container is visible
+      this.showMenus(); // Make sure menu container is visible
+      
+      setTimeout(() => {
+        // Make sure menu container is still visible
+        this.showMenus();
+        
+        list.classList.remove('ql-hidden');
+        tooltip.classList.add('ql-table-tooltip-hidden');
+        this.prevList = list;
+        this.prevTooltip = tooltip;
+        
+        // After showing dropdown, update its position to account for any layout changes
+        if (this.table) {
+          this.updateMenus(this.table);
+        }
+      }, 300); // 300ms delay to allow keyboard to close
+    } else {
+      // When hiding, do it immediately
+      list.classList.add('ql-hidden');
+      tooltip.classList.remove('ql-table-tooltip-hidden');
+      this.prevList = list;
+      this.prevTooltip = tooltip;
+    }
   }
 
   toggleHeaderRow() {
@@ -1005,38 +1288,70 @@ class TableMenus {
   updateMenus(table: HTMLElement = this.table) {
     if (!table) return;
     requestAnimationFrame(() => {
-      this.root.classList.remove('ql-table-triangle-none');
-      const [tableBounds, containerBounds] = this.getCorrectBounds(table);
-      const { left, right, top, bottom } = tableBounds;
-      const { height, width } = this.root.getBoundingClientRect();
-      const toolbar = this.quill.getModule('toolbar');
-      // @ts-expect-error
-      const computedStyle = getComputedStyle(toolbar.container);
-      let correctTop = top - height - 10;
-      let correctLeft = (left + right - width) >> 1;
-      if (correctTop > -parseInt(computedStyle.paddingBottom)) {
-        this.root.classList.add('ql-table-triangle-up');
-        this.root.classList.remove('ql-table-triangle-down');
-      } else {
-        if (bottom > containerBounds.height) {
-          correctTop = containerBounds.height + 10;
+      try {
+        this.root.classList.remove('ql-table-triangle-none');
+        const [tableBounds, containerBounds] = this.getCorrectBounds(table);
+        const { left, right, top, bottom } = tableBounds;
+        const { height, width } = this.root.getBoundingClientRect();
+        const toolbar = this.quill.getModule('toolbar');
+        // @ts-expect-error
+        const computedStyle = getComputedStyle(toolbar.container);
+        let correctTop = top - height - 10;
+        let correctLeft = (left + right - width) >> 1;
+        
+        // Check if we have a selected cell to position the menu relative to it
+        const selectedTds = this.tableBetter.cellSelection.selectedTds;
+        if (selectedTds.length > 0 && selectedTds[0].isConnected) {
+          // Position the menu relative to the selected cell instead of the table
+          const selectedCell = selectedTds[0];
+          const cellBounds = getCorrectBounds(selectedCell, this.quill.container);
+          
+          // Adjust the position based on the selected cell
+          correctTop = cellBounds.top - height - 10;
+          correctLeft = (cellBounds.left + cellBounds.right - width) >> 1;
+          
+          // If the menu would be positioned above the viewport, place it below the cell
+          if (correctTop < 0) {
+            correctTop = cellBounds.bottom + 10;
+            this.root.classList.add('ql-table-triangle-down');
+            this.root.classList.remove('ql-table-triangle-up');
+          } else {
+            this.root.classList.add('ql-table-triangle-up');
+            this.root.classList.remove('ql-table-triangle-down');
+          }
         } else {
-          correctTop = bottom + 10;
+          // Fall back to table-based positioning if no cell is selected
+          if (correctTop > -parseInt(computedStyle.paddingBottom)) {
+            this.root.classList.add('ql-table-triangle-up');
+            this.root.classList.remove('ql-table-triangle-down');
+          } else {
+            if (bottom > containerBounds.height) {
+              correctTop = containerBounds.height + 10;
+            } else {
+              correctTop = bottom + 10;
+            }
+            this.root.classList.add('ql-table-triangle-down');
+            this.root.classList.remove('ql-table-triangle-up');
+          }
         }
-        this.root.classList.add('ql-table-triangle-down');
-        this.root.classList.remove('ql-table-triangle-up');
+        
+        // Ensure the menu stays within the container bounds
+        if (correctLeft < containerBounds.left) {
+          correctLeft = 0;
+          this.root.classList.add('ql-table-triangle-none');
+        } else if (correctLeft + width > containerBounds.right) {
+          correctLeft = containerBounds.right - width;
+          this.root.classList.add('ql-table-triangle-none');
+        }
+        
+        // Apply the position
+        setElementProperty(this.root, {
+          left: `${correctLeft}px`,
+          top: `${correctTop}px`
+        });
+      } catch (error) {
+        console.error('Error in updateMenus:', error);
       }
-      if (correctLeft < containerBounds.left) {
-        correctLeft = 0;
-        this.root.classList.add('ql-table-triangle-none');
-      } else if (correctLeft + width > containerBounds.right) {
-        correctLeft = containerBounds.right - width;
-        this.root.classList.add('ql-table-triangle-none');
-      }
-      setElementProperty(this.root, {
-        left: `${correctLeft}px`,
-        top: `${correctTop}px`
-      });
     });
   }
 

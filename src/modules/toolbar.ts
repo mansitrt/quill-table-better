@@ -143,7 +143,6 @@ class TableToolbar extends Toolbar {
     if (this.handlers[format] != null) {
       this.handlers[format].call(this, value);
     } else if (
-      // @ts-expect-error
       this.quill.scroll.query(format).prototype instanceof EmbedBlot
     ) {
       value = prompt(`Enter ${format}`); // eslint-disable-line no-alert
