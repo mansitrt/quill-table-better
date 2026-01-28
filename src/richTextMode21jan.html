@@ -124,13 +124,7 @@
   .editor-search-highlight.inactive {
     background-color: rgba(255, 235, 59, 0.5) !important;
   }
-
-  .ql-operate-line-container,
-  .ql-operate-block,
-  .ql-operate-drag-table {
-    display: none !important;
-    pointer-events: none !important;
-  }
+  
 </style>
 
 <!-- Include Quill stylesheet -->
@@ -2005,7 +1999,7 @@ Quill.register('modules/findAndReplace', FindAndReplace);
   }
 
   function handleBackspace(picker, type, quill) {
-    if(!picker) return;
+    if (!picker) return; 
     const range = quill.getSelection(); // Get the current selection in Quill
     let [currentLine, offset] = quill.getLine(range.index);
     let [prevLine] = quill.getLine(range.index - 1);
@@ -2093,9 +2087,17 @@ Quill.register('modules/findAndReplace', FindAndReplace);
     }
     else if (event.key === "Enter") {
       isKeyboardOperation = true;
-      // Allow Enter key to work normally
+      // Handle Enter key to update toolbar immediately with preserved formatting
       setTimeout(() => {
-        isKeyboardOperation = false;
+        // Get the current selection
+        const range = snow.getSelection();
+        if (range) {
+          // Get the current formats at cursor position
+          const formats = snow.getFormat(range.index, range.length);
+          // Update the toolbar with these formats
+          updateToolbarUI(formats);
+          isKeyboardOperation = false;
+        }
       }, 50);
     }
   }, { capture: true, passive: false });
@@ -2255,9 +2257,9 @@ Quill.register('modules/findAndReplace', FindAndReplace);
     const currentSelection = snow.getSelection();
     const isFocused = document.activeElement === snow.container;
 
-    // if (isFocused) {
-    //   snow.blur();
-    // }
+    if (isFocused) {
+      snow.blur();
+    }
     // Find the font dropdown in the toolbar
     const fontDropdown = document.querySelector('.ql-font .ql-picker-options');
     if (fontDropdown) {
@@ -2359,9 +2361,9 @@ Quill.register('modules/findAndReplace', FindAndReplace);
     `;
     console.log(`Updated list styling - Size: ${fontSize}`);
 
-    // setTimeout(() => {
-    //   snow.blur(); // Explicitly remove focus
-    // }, 0);
+    setTimeout(() => {
+      snow.blur(); // Explicitly remove focus
+    }, 0)
   }
 
 
@@ -3024,17 +3026,7 @@ Quill.register('modules/findAndReplace', FindAndReplace);
 
     // Get the formats from the cell
     const cellIndex = snow.getIndex(cellBlot);
-    let cellFormats = snow.getFormat(cellIndex, 1);
-
-    // Check if cell is empty
-    const cellText = cell.textContent.trim();
-    const isEmpty = cellText === '' || cellText === '\u200B'; // Zero-width space
-
-    // If cell is empty, apply last used formatting
-    if (isEmpty && lastSelectedFormats) {
-      cellFormats = { ...lastSelectedFormats, ...cellFormats };
-      console.log("Empty cell - applying last used formats:", cellFormats);
-    }
+    const cellFormats = snow.getFormat(cellIndex, 1);
 
     console.log("Cell formats detected:", cellFormats);
 
@@ -3119,66 +3111,125 @@ Quill.register('modules/findAndReplace', FindAndReplace);
       }
     }
 
-    // Don't stop propagation - allow keyboard events to work
+    // Stop propagation to prevent other handlers from interfering
+    e.stopPropagation();
   }
 
   // Add event listeners with high priority (capture: true)
   // This ensures our handler runs first, before other handlers
-  editor.addEventListener('click', function(e) {
-    const cell = e.target.closest('td');
-    if (cell) {
-      // Stop propagation to keep keyboard open
-      e.stopPropagation();
-      
-      // Remove focus and conflicting selection classes from ALL cells
-      document.querySelectorAll('td').forEach(c => {
-        c.classList.remove('ql-cell-focused');
-        c.classList.remove('ql-cell-selected');
-        c.classList.remove('ql-cell-selected-after');
-      });
-      
-      // Add focus class ONLY to clicked cell
-      cell.classList.add('ql-cell-focused');
-      console.log('Cell focused:', cell);
-      
-      // Keep editor and Quill focused to open keyboard
-      setTimeout(() => {
-        editor.focus();
-        snow.focus();
-      }, 0);
-    }
-    // Call the original handler
-    updateToolbarFromCell(e);
-  }, { capture: true });
-  
-  editor.addEventListener('touchend', function(e) {
-    const cell = e.target.closest('td');
-    if (cell) {
-      // Stop propagation to keep keyboard open
-      e.stopPropagation();
-      
-      // Remove focus and conflicting selection classes from ALL cells
-      document.querySelectorAll('td').forEach(c => {
-        c.classList.remove('ql-cell-focused');
-        c.classList.remove('ql-cell-selected');
-        c.classList.remove('ql-cell-selected-after');
-      });
-      
-      // Add focus class ONLY to clicked cell
-      cell.classList.add('ql-cell-focused');
-      console.log('Cell focused (touchend):', cell);
-      
-      // Keep editor and Quill focused to open keyboard
-      setTimeout(() => {
-        editor.focus();
-        snow.focus();
-      }, 0);
-    }
-    // Call the original handler
-    updateToolbarFromCell(e);
-  }, { capture: true });
+  editor.addEventListener('click', updateToolbarFromCell, { capture: true });
+  editor.addEventListener('touchend', updateToolbarFromCell, { capture: true });
 
-  // All cell handling is done in the main event listeners above
+  // MOBILE SPECIFIC: CREATE A COMPLETELY ISOLATED SOLUTION
+  // First, remove ALL previous event listeners to avoid conflicts
+  function cleanupEventListeners() {
+    try {
+      // Remove all previously attached event listeners
+      editor.removeEventListener('click', updateToolbarFromCell, { capture: true });
+      editor.removeEventListener('touchend', updateToolbarFromCell, { capture: true });
+      editor.removeEventListener('mousedown', onCellClick, { capture: true });
+      editor.removeEventListener('touchstart', onCellClick, { capture: true });
+    } catch (e) {
+      console.log("Cleanup error:", e);
+    }
+  }
+
+  // Run cleanup
+  cleanupEventListeners();
+
+  // Create ONE isolated function to handle cell clicks
+  function cellClickHandler(e) {
+    // Only process if we clicked on a table cell
+    const cell = e.target.closest('td');
+    if (!cell) return;
+
+    // Allow event to propagate normally
+    // This fixes the issue where stopping propagation broke other features
+
+    // Wait until after Quill has processed the click
+    setTimeout(() => {
+      try {
+        // Get the cell format data
+        const cellBlot = Quill.find(cell);
+        if (!cellBlot) return;
+
+        const cellIndex = snow.getIndex(cellBlot);
+        const cellFormats = snow.getFormat(cellIndex, 1);
+
+        console.log("CELL FORMATS:", cellFormats);
+
+        // ONLY update toolbar buttons - nothing else
+        // Use direct DOM manipulation with minimal code
+
+        // Bold
+        const boldBtn = document.querySelector('.ql-bold');
+        if (boldBtn) {
+          if (cellFormats.bold === true) {
+            boldBtn.classList.add('ql-active');
+          } else {
+            boldBtn.classList.remove('ql-active');
+          }
+        }
+
+        // Italic
+        const italicBtn = document.querySelector('.ql-italic');
+        if (italicBtn) {
+          if (cellFormats.italic === true) {
+            italicBtn.classList.add('ql-active');
+          } else {
+            italicBtn.classList.remove('ql-active');
+          }
+        }
+
+        // Underline
+        const underlineBtn = document.querySelector('.ql-underline');
+        if (underlineBtn) {
+          if (cellFormats.underline === true) {
+            underlineBtn.classList.add('ql-active');
+          } else {
+            underlineBtn.classList.remove('ql-active');
+          }
+        }
+
+        // Strike
+        const strikeBtn = document.querySelector('.ql-strike');
+        if (strikeBtn) {
+          if (cellFormats.strike === true) {
+            strikeBtn.classList.add('ql-active');
+          } else {
+            strikeBtn.classList.remove('ql-active');
+          }
+        }
+      } catch (err) {
+        console.error("Error updating toolbar:", err);
+      }
+    }, 10);
+  }
+
+  // Additionally, listen for format changes on the editor
+  // This ensures the toolbar state stays in sync with content
+  snow.on('text-change', function () {
+    const range = snow.getSelection();
+    if (range) {
+      const formats = snow.getFormat(range);
+
+      // Get the toolbar module to access userDeselectedFormats
+      const toolbar = snow.getModule('toolbar');
+      const userDeselectedFormats = toolbar?.userDeselectedFormats || {};
+      // Update button states based on selection format
+      const boldBtn = document.querySelector('.ql-bold');
+      if (boldBtn && !userDeselectedFormats.bold) boldBtn.classList.toggle('ql-active', formats.bold === true);
+
+      const italicBtn = document.querySelector('.ql-italic');
+      if (italicBtn && !userDeselectedFormats.italic) italicBtn.classList.toggle('ql-active', formats.italic === true);
+
+      const underlineBtn = document.querySelector('.ql-underline');
+      if (underlineBtn && !userDeselectedFormats.underline) underlineBtn.classList.toggle('ql-active', formats.underline === true);
+
+      const strikeBtn = document.querySelector('.ql-strike');
+      if (strikeBtn && !userDeselectedFormats.strike) strikeBtn.classList.toggle('ql-active', formats.strike === true);
+    }
+  });
 
 
   (function () {
@@ -3223,7 +3274,270 @@ Quill.register('modules/findAndReplace', FindAndReplace);
       strike: false
     };
 
-  // All cell handling is done in the main click/touchend handlers above
+    // Helper to update button states
+    function setToolbarButtonStates(formats) {
+      if (!formats) return;
+
+      // Get button elements
+      const boldButton = document.querySelector('.ql-bold');
+      const italicButton = document.querySelector('.ql-italic');
+      const underlineButton = document.querySelector('.ql-underline');
+      const strikeButton = document.querySelector('.ql-strike');
+
+      // Update each button - set to directly modify the DOM without side effects
+      // Only update if the user hasn't manually deselected the format
+      if (boldButton && !userDeselectedFormats.bold)
+        boldButton.classList.toggle('ql-active', formats.bold === true);
+
+      if (italicButton && !userDeselectedFormats.italic)
+        italicButton.classList.toggle('ql-active', formats.italic === true);
+
+      if (underlineButton && !userDeselectedFormats.underline)
+        underlineButton.classList.toggle('ql-active', formats.underline === true);
+
+      if (strikeButton && !userDeselectedFormats.strike)
+        strikeButton.classList.toggle('ql-active', formats.strike === true);
+    }
+
+    // Get formats from a cell
+    function getCellFormats(cell) {
+      if (!cell) return null;
+
+      try {
+        const blot = Quill.find(cell);
+        if (!blot) return null;
+
+        const index = snow.getIndex(blot);
+        return snow.getFormat(index, 1);
+      } catch (e) {
+        console.error("Error getting cell formats:", e);
+        return null;
+      }
+    }
+
+    // Handle cell interactions
+    function onCellInteract(e) {
+      const cell = e.target.closest('td, th');
+      if (!cell) return;
+
+      console.log(`Cell ${e.type} detected`);
+
+      const formats = getCellFormats(cell);
+
+      // Check if cell has content
+      const hasContent = cell.textContent.trim().length > 0;
+      
+      // Check if cell is empty (or only contains whitespace/zero-width spaces)
+      const isEmpty = !hasContent;
+
+      if (hasContent) {
+        // For cells with content, ONLY update the toolbar UI to reflect the cell's formats
+        // DO NOT apply any formats to the cell - just read what's there
+        console.log("Cell has content - updating toolbar to match cell's existing formats");
+        
+        const formatButtons = {
+          bold: document.querySelector('.ql-bold'),
+          italic: document.querySelector('.ql-italic'),
+          underline: document.querySelector('.ql-underline'),
+          strike: document.querySelector('.ql-strike')
+        };
+
+        // Reset user deselected formats - we're reading from the cell now
+        Object.keys(userDeselectedFormats).forEach(format => {
+          userDeselectedFormats[format] = false;
+        });
+
+        // Update toolbar buttons to MATCH the cell's actual formats (READ ONLY)
+        Object.entries(formatButtons).forEach(([format, button]) => {
+          if (!button) return;
+          
+          if (formats && formats[format]) {
+            button.classList.add('ql-active');
+          } else {
+            button.classList.remove('ql-active');
+          }
+        });
+        
+        // Update color pickers to match cell's actual colors (READ ONLY)
+        const colorFormats = {};
+        if (formats && formats.color) {
+          colorFormats.color = formats.color;
+        }
+        if (formats && formats.background) {
+          colorFormats.background = formats.background;
+        }
+        if (formats && formats.font) {
+          colorFormats.font = formats.font;
+        }
+        if (formats && formats.size) {
+          colorFormats.size = formats.size;
+        }
+        
+        // Update toolbar UI to show the cell's formats
+        if (Object.keys(colorFormats).length > 0) {
+          updateToolbarUI(colorFormats);
+        }
+        
+        // IMPORTANT: Set the active formats for when user starts typing
+        // This ensures new text in the cell will match existing formatting
+        // const range = snow.getSelection();
+        // if (range) {
+        //   // Apply formats to the current selection point (for future typing)
+        //   // But DO NOT modify existing text
+        //   const allPossibleFormats = ['bold', 'italic', 'underline', 'strike', 'color', 'background', 'font', 'size'];
+          
+        //   allPossibleFormats.forEach(format => {
+        //     if (formats && (formats[format] === undefined || formats[format] === null || formats[format] === false)) {
+        //       // This format is NOT in the cell, so clear it
+        //       snow.format(format, false, Quill.sources.SILENT);
+        //     } else if (formats && formats[format]) {
+        //       // This format IS in the cell, so apply it for future typing
+        //       snow.format(format, formats[format], Quill.sources.SILENT);
+        //     }
+        //   });
+        // }
+        
+        // Update lastSelectedFormats for future use
+        lastSelectedFormats = formats || {};
+        
+      } else if (isEmpty) {
+        // For empty cells, inherit formats from the cell above in the same column
+        console.log("Empty cell - inheriting formats from cell above");
+        
+        // Try to find the cell above in the same column
+        let inheritedFormats = {};
+        
+        try {
+          const row = cell.parentElement;
+          const cellIndex = Array.from(row.children).indexOf(cell);
+          let prevRow = row.previousElementSibling;
+          
+          // Look for the first non-empty cell above
+          while (prevRow) {
+            const cellAbove = prevRow.children[cellIndex];
+            if (cellAbove && cellAbove.textContent.trim().length > 0) {
+              inheritedFormats = getCellFormats(cellAbove) || {};
+              console.log("Found formats from cell above:", inheritedFormats);
+              break;
+            }
+            prevRow = prevRow.previousElementSibling;
+          }
+          
+          // If no cell above has content, use lastSelectedFormats
+          if (Object.keys(inheritedFormats).length === 0) {
+            inheritedFormats = lastSelectedFormats || {};
+            console.log("No cell above with content, using lastSelectedFormats:", inheritedFormats);
+          }
+        } catch (e) {
+          console.error("Error finding cell above:", e);
+          inheritedFormats = lastSelectedFormats || {};
+        }
+        
+        // Get the format buttons
+        const formatButtons = {
+          bold: document.querySelector('.ql-bold'),
+          italic: document.querySelector('.ql-italic'),
+          underline: document.querySelector('.ql-underline'),
+          strike: document.querySelector('.ql-strike')
+        };
+
+        // Update button states based on inherited formats
+        Object.entries(formatButtons).forEach(([format, button]) => {
+          if (!button) return;
+
+          if (userDeselectedFormats[format]) {
+            // If user deselected this format, ensure it stays deselected
+            button.classList.remove('ql-active');
+            delete inheritedFormats[format]; // Remove from inherited formats too
+          } else if (inheritedFormats && inheritedFormats[format]) {
+            // Otherwise, use the inherited format
+            button.classList.add('ql-active');
+          } else {
+            button.classList.remove('ql-active');
+          }
+        });
+        
+        // Update toolbar to show inherited formats
+        if (inheritedFormats && Object.keys(inheritedFormats).length > 0) {
+          updateToolbarUI(inheritedFormats);
+          
+          // Apply the inherited formats as active formatting for when user types
+          // const range = snow.getSelection();
+          // if (range) {
+          //   const allPossibleFormats = ['bold', 'italic', 'underline', 'strike', 'color', 'background', 'font', 'size'];
+            
+          //   allPossibleFormats.forEach(format => {
+          //     if (inheritedFormats[format] && !userDeselectedFormats[format]) {
+          //       snow.format(format, inheritedFormats[format], Quill.sources.SILENT);
+          //     } else {
+          //       snow.format(format, false, Quill.sources.SILENT);
+          //     }
+          //   });
+            
+          //   // Force selection update to trigger toolbar refresh
+          //   snow.setSelection(range.index, range.length, Quill.sources.USER);
+          // }
+        }
+        
+        // Update lastSelectedFormats
+        lastSelectedFormats = inheritedFormats;
+      }
+    }
+
+  // Set up toolbar button tracking
+  function setupToolbarTracking() {
+    const formatButtons = {
+      bold: document.querySelector('.ql-bold'),
+      italic: document.querySelector('.ql-italic'),
+      underline: document.querySelector('.ql-underline'),
+      strike: document.querySelector('.ql-strike')
+    };
+
+    Object.entries(formatButtons).forEach(([format, button]) => {
+      if (!button) return;
+
+      // Replace the existing button click handler with this one
+      button.addEventListener('click', function(e) {
+        // Important: Stop propagation to prevent QuillJS from handling this twice
+        e.stopPropagation();
+        e.preventDefault();
+        
+        // Was it active before click?
+        const wasActive = button.classList.contains('ql-active');
+        
+        // Get current selection
+        const range = snow.getSelection();
+        if (!range) return;
+        
+        if (wasActive) {
+          // User is turning format OFF
+          userDeselectedFormats[format] = true;
+          console.log(`User deselected ${format}`);
+          
+          // Manually remove the format
+          snow.format(format, false);
+          button.classList.remove('ql-active');
+        } else {
+          // User is turning format ON
+          userDeselectedFormats[format] = false;
+          console.log(`User selected ${format}`);
+          
+          // Manually apply the format
+          snow.format(format, true);
+          button.classList.add('ql-active');
+        }
+      }, true); // Use capture phase to ensure our handler runs first
+    });
+
+    console.log("Toolbar tracking set up");
+  }
+
+    // Add event listeners
+    document.addEventListener('mousedown', onCellInteract, true);
+    document.addEventListener('touchstart', onCellInteract, true);
+
+    // Set up toolbar tracking
+    setupToolbarTracking();
 
    // Prevent native context menu on table cells (only on long-press)
     let touchTimer;
@@ -3281,12 +3595,87 @@ Quill.register('modules/findAndReplace', FindAndReplace);
       // Send content to native app (preserve this functionality)
       sendContentToNativeApp();
 
-      // Toolbar will be updated by updateToolbarFromCell on next click
+      // Update toolbar state based on current selection format
+      const range = snow.getSelection();
+      if (range) {
+        const formats = snow.getFormat(range);
+        setToolbarButtonStates(formats);
+      }
     });
     
+    // Handle selection changes
+    snow.on('selection-change', function (range) {
+      if (!range) return;
+
+      try {
+        // Check if we're in a cell
+        const [leaf] = snow.getLeaf(range.index);
+        if (leaf && leaf.parent) {
+          const cell = leaf.parent.domNode.closest('td');
+          if (cell) {
+            const formats = getCellFormats(cell);
+            setToolbarButtonStates(formats);
+          }
+        }
+      } catch (e) {
+        console.error("Error in selection change:", e);
+      }
+    });
   })();
 
-  // Click handling is done by the main click/touchend handlers above
+    // Capture clicks using the capture phase (runs before regular handlers)
+  document.getElementById('editor').addEventListener('click', function (event) {
+    // Skip if scroll is already in progress
+    if (scrollInProgress) {
+      console.log('Scroll in progress, ignoring click');
+      return;
+    }
+
+    // Get the exact click coordinates
+    const clickX = event.clientX;
+    const clickY = event.clientY;
+
+    // Get the editor container and Quill instance
+    const editorContainer = document.getElementById('editor');
+    const quill = Quill.find(editorContainer);
+
+    if (!quill) return;
+
+    // Use caretRangeFromPoint to get the precise text position
+    try {
+      const range = document.caretRangeFromPoint(clickX, clickY);
+      if (range && range.startContainer) {
+        // Create a temporary range to work with
+        const nativeRange = document.createRange();
+        nativeRange.setStart(range.startContainer, range.startOffset);
+        nativeRange.collapse(true);
+
+        // Set the native selection to our position
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(nativeRange);
+
+        // Give Quill a moment to update its selection based on our native selection
+        setTimeout(() => {
+          // Get the current selection from Quill
+          const quillSelection = quill.getSelection();
+          if (quillSelection) {
+            console.log('Quill selection after click:', quillSelection);
+
+            // Use our helper function to adjust scroll
+            adjustScrollForSelection(quillSelection.index, editorContainer, quill);
+          }
+        }, 10);
+      }
+    } catch (e) {
+      console.log('Error in click handling:', e);
+    }
+
+    // Don't stop the event from propagating - let Quill handle selection
+  }, true); // true = capture phase, runs before regular handlers
+
+  // Remove any other click handlers to avoid conflicts
+  console.log('iOS-optimized click-to-scroll handler installed');
 
   // Add keyboard detection for iOS with fixed height
   let currentKeyboardHeight = 0;
@@ -3424,7 +3813,7 @@ Quill.register('modules/findAndReplace', FindAndReplace);
       scrollInProgress = false;
       // Ensure the editor is focused
       if (!window.isSearchPanelOpen) {
-        snow.focus();
+        quill.focus();
       }
     }
   }

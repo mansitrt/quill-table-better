@@ -57,6 +57,7 @@ class CellSelection {
   disabledList: Array<HTMLElement | Element>;
   singleList: Array<HTMLElement | Element>;
   tableBetter: QuillTableBetter;
+  classObserver: MutationObserver | null;
   constructor(quill: Quill, tableBetter: QuillTableBetter) {
     this.quill = quill;
     this.selectedTds = [];
@@ -65,6 +66,7 @@ class CellSelection {
     this.disabledList = [];
     this.singleList = [];
     this.tableBetter = tableBetter;
+    this.classObserver = null;
     this.quill.root.addEventListener('click', this.handleClick.bind(this));
     this.initDocumentListener();
     this.initWhiteList();
@@ -88,7 +90,7 @@ class CellSelection {
 
   clearSelected() {
     for (const td of this.selectedTds) {
-      td.classList && td.classList.remove('ql-cell-focused', 'ql-cell-selected');
+      td.classList && td.classList.remove('ql-cell-focused', 'ql-cell-selected', 'ql-cell-selected-after');
     }
     this.selectedTds = [];
     this.startTd = null;
@@ -124,7 +126,10 @@ class CellSelection {
   }
 
   getCopyData() {
-    const tableBlot = (Quill.find(this.selectedTds[0]) as TableCell).table();
+    if (!this.selectedTds || !this.selectedTds[0]) return;
+    const cellBlot = Quill.find(this.selectedTds[0]) as TableCell;
+    if (!cellBlot) return;
+    const tableBlot = cellBlot.table();  
     const tableCells = tableBlot.descendants(TableCell);
     if (tableCells.length === this.selectedTds.length) {
       const html = tableBlot.getCopyTable();
@@ -166,6 +171,7 @@ class CellSelection {
     const offset = key === 'next' ? 0 : -1;
     let rowspan = (~~td.getAttribute('rowspan') || 1) + offset || 1;
     const cell = Quill.find(td) as TableCell;
+    if (!cell) return null; // Add null check
     let row = cell.parent;
     while (row && rowspan) {
       // @ts-expect-error
@@ -339,30 +345,111 @@ class CellSelection {
     this.tableBetter.tableMenus.destroyTablePropertiesForm();
     const startTd = (e.target as Element).closest('td,th');
     if (!startTd) return;
-    this.clearSelected();
+    
+    // iOS: Disable multi-cell selection to prevent cut/copy issues
+    // Only allow single cell selection at a time
+    const isIOS = typeof window !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent);
+    
+       if (isIOS) {
+      // On iOS, just select the single cell and don't allow drag selection
+      // Remove all selection classes from all cells first
+      const allCells = document.querySelectorAll('td, th');
+      allCells.forEach((c: any) => {
+        c.classList && c.classList.remove('ql-cell-focused', 'ql-cell-selected', 'ql-cell-selected-after');
+        if (c.style) {
+          c.style.backgroundColor = '';
+        }
+      });
+      
+      this.clearSelected();
+      this.startTd = startTd;
+      this.endTd = startTd;
+      this.selectedTds = [startTd];
+      
+      // Add focused class to show selection
+      startTd.classList && startTd.classList.add('ql-cell-focused');
+      
+      this.setHeaderRowSwitch();
+      this.setMenuDisable('merge');
+      this.setSingleDisabled();
+      
+      // Ensure the cell has content before Quill tries to select it
+      const cell = Quill.find(startTd) as TableCell;
+      if (cell) {
+        const cellIndex = this.quill.getIndex(cell);
+        const cellLength = cell.length();
+        
+        if (cellLength <= 1) {
+          setTimeout(() => {
+            const updatedCellLength = cell.length();
+            if (updatedCellLength > 1) {
+              this.quill.setSelection(cellIndex + updatedCellLength - 1, 0, Quill.sources.SILENT);
+            }
+          }, 10);
+        } else {
+          this.quill.setSelection(cellIndex + cellLength - 1, 0, Quill.sources.SILENT);
+        }
+      }
+      
+      // Prevent default behavior to stop text selection
+      e.preventDefault();
+      return;
+    }
+    
+    // Desktop: Allow drag selection as before
     this.startTd = startTd;
     this.endTd = startTd;
-    this.selectedTds = [startTd];
-    startTd.classList.add('ql-cell-focused');
+    
     this.setHeaderRowSwitch();
     this.setMenuDisable('merge');
+    
+    const cell = Quill.find(startTd) as TableCell;
+    if (cell) {
+      const cellIndex = this.quill.getIndex(cell);
+      const cellLength = cell.length();
+      
+      if (cellLength <= 1) {
+        setTimeout(() => {
+          const updatedCellLength = cell.length();
+          if (updatedCellLength > 1) {
+            this.quill.setSelection(cellIndex + updatedCellLength - 1, 0, Quill.sources.SILENT);
+          }
+        }, 10);
+      } else {
+        this.quill.setSelection(cellIndex + cellLength - 1, 0, Quill.sources.SILENT);
+      }
+    }
+
+    let isDragging = false;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const dragThreshold = 5;
     
     const handleMouseMove = (e: MouseEvent) => {
       const endTd = (e.target as Element).closest('td,th');
       if (!endTd) return;
       const isEqualNode = startTd.isEqualNode(endTd);
       if (isEqualNode) return;
-      this.clearSelected();
-      this.startTd = startTd;
-      this.endTd = endTd;
-      const startCorrectBounds = getCorrectBounds(startTd, this.quill.container);
-      const endCorrectBounds = getCorrectBounds(endTd, this.quill.container);
-      const computeBounds = getComputeBounds(startCorrectBounds, endCorrectBounds);
-      this.selectedTds = getComputeSelectedTds(computeBounds, table, this.quill.container);
-      for (const td of this.selectedTds) {
-        td.classList && td.classList.add('ql-cell-selected');
+      
+      const deltaX = Math.abs(e.clientX - startX);
+      const deltaY = Math.abs(e.clientY - startY);
+      if (deltaX > dragThreshold || deltaY > dragThreshold) {
+        isDragging = true;
       }
-      if (!isEqualNode) this.quill.blur();
+      
+      if (isDragging) {
+        this.clearSelected();
+        this.startTd = startTd;
+        this.endTd = endTd;
+        const startCorrectBounds = getCorrectBounds(startTd, this.quill.container);
+        const endCorrectBounds = getCorrectBounds(endTd, this.quill.container);
+        const computeBounds = getComputeBounds(startCorrectBounds, endCorrectBounds);
+        this.selectedTds = getComputeSelectedTds(computeBounds, table, this.quill.container);
+        for (const td of this.selectedTds) {
+          td.classList && td.classList.add('ql-cell-selected');
+        }
+        if (!isEqualNode) this.quill.blur();
+      }
     }
 
     const handleMouseup = (e: MouseEvent) => {
@@ -414,7 +501,9 @@ class CellSelection {
   }
 
   insertRow(table: TableContainer, offset: number, td: Element) {
-    const index = (Quill.find(td) as TableCell).rowOffset();
+  const cellBlot = Quill.find(td) as TableCell;
+  if (!cellBlot) return; // Add null check
+  const index = cellBlot.rowOffset();
     while (offset--) {
       table.insertRow(index + 1, 1);
     }
@@ -699,26 +788,140 @@ class CellSelection {
   }
 
   setSelected(target: Element, force: boolean = true) {
+    if (!target) {
+      console.warn('setSelected called with null target');
+      return;
+    }
+    
+    const htmlTarget = target as HTMLElement;
+    if (!htmlTarget.isConnected) {
+      console.warn('setSelected called with disconnected element');
+      return;
+    }
+    
     const cell = Quill.find(target) as TableCell;
+    if (!cell) {
+      console.warn('Could not find cell blot for target:', target);
+      return;
+    }
+    
     this.clearSelected();
     this.startTd = target;
     this.endTd = target;
     this.selectedTds = [target];
-    target.classList.add('ql-cell-focused');
-    force && this.quill.setSelection(
-      cell.offset(this.quill.scroll) + cell.length() - 1,
-      0,
-      Quill.sources.USER
-    );
+    
+    try {
+      htmlTarget.classList.add('ql-cell-focused');
+      console.log('Added ql-cell-focused class via setSelected:', target);
+    } catch (error) {
+      console.warn('Could not add ql-cell-focused class:', error);
+      return;
+    }
+    
+    if (force) {
+      try {
+        this.quill.setSelection(
+          cell.offset(this.quill.scroll) + cell.length() - 1,
+          0,
+          Quill.sources.USER
+        );
+      } catch (error) {
+        console.warn('Could not set selection:', error);
+      }
+    }
   }
 
-  setSelectedTds(selectedTds: Element[]) {
+   setSelectedTds(selectedTds: Element[]) {
+    if (!selectedTds || selectedTds.length === 0) return;
+    
+    // Only select the first cell if multiple are provided
+    let singleCell = selectedTds[0] as HTMLElement;
+    if (!singleCell) return;
+    
+    // Validate the cell
+    if (!singleCell.isConnected || !singleCell.classList) {
+      console.warn('Cell is not connected or has no classList');
+      return;
+    }
+    
+    // CRITICAL FIX: Always clear ALL cells first to remove blue background
+    const allCells = document.querySelectorAll('td, th');
+    allCells.forEach((c: any) => {
+      c.classList && c.classList.remove('ql-cell-focused', 'ql-cell-selected', 'ql-cell-selected-after');
+      if (c.style) {
+        c.style.backgroundColor = '';
+      }
+    });
+    
+    // Clear internal state
     this.clearSelected();
-    this.startTd = selectedTds[0];
-    this.endTd = selectedTds[selectedTds.length - 1];
-    this.selectedTds = selectedTds;
-    for (const td of this.selectedTds) {
-      td.classList && td.classList.add('ql-cell-selected');
+    
+    // Now set only the new cell as selected
+    this.startTd = singleCell;
+    this.endTd = singleCell;
+    this.selectedTds = [singleCell];
+    
+    // Add focused class to the single selected cell
+    try {
+      singleCell.classList.add('ql-cell-focused');
+      console.log('Added ql-cell-focused class to cell:', singleCell);
+      
+      // Disconnect previous observer
+      if (this.classObserver) {
+        this.classObserver.disconnect();
+      }
+      
+      // Create new observer for this cell
+      this.classObserver = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+          if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+            const target = mutation.target as HTMLElement;
+            // If the focused cell lost the class, restore it
+            if (this.selectedTds.length > 0 && 
+                this.selectedTds[0] === target && 
+                !target.classList.contains('ql-cell-focused')) {
+              target.classList.add('ql-cell-focused');
+              console.log('Restored ql-cell-focused class to cell:', target);
+            }
+          }
+        }
+      });
+      
+      // Start observing the new cell
+      this.classObserver.observe(singleCell, { attributes: true, attributeFilter: ['class'] });
+    } catch (error) {
+      console.warn('Could not add ql-cell-focused class:', error);
+      return;
+    }
+    
+    // Set the cursor position in the cell
+    const cellBlot = Quill.find(singleCell) as TableCell;
+    if (!cellBlot || !cellBlot.domNode) {
+      console.warn('Could not find cellBlot or domNode');
+      return;
+    }
+    
+    try {
+      const offset = cellBlot.offset(this.quill.scroll);
+      const length = cellBlot.length();
+      if (offset !== null && offset !== undefined && length !== null && length !== undefined) {
+        // Position cursor at the end of cell content (before the closing marker)
+        // This is the natural position for typing - after existing content
+        const cursorPos = offset + Math.max(1, length - 1);
+        this.quill.setSelection(cursorPos, 0, Quill.sources.USER);
+        
+        // Update toolbar to show the cell's current formatting
+        try {
+          const cellFormats = this.quill.getFormat(cursorPos);
+          if (this.tableBetter && typeof this.tableBetter.updateToolbarUI === 'function') {
+            this.tableBetter.updateToolbarUI(cellFormats);
+          }
+        } catch (error) {
+          console.warn('Could not update toolbar UI:', error);
+        }
+      }
+    } catch (error) {
+      console.warn('Could not set selection in cell:', error);
     }
   }
 

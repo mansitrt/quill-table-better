@@ -157,6 +157,58 @@ $focused-border: 1px solid $focused-border-color;
     @extend .ql-cell-selected-after;
   }
 }
+// Ensure table cells have minimum height for better click detection
+table td,
+table th {
+  min-height: 40px;
+  position: relative;
+  cursor: pointer;
+  
+  // Ensure empty cells and cells with only blocks are clickable
+  &:empty::before,
+  &:has(.ql-table-block:empty)::before {
+    content: "";
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    min-height: 40px;
+    z-index: 1;
+    pointer-events: auto;
+  }
+  
+  // Ensure cells without content still have height
+  &:not(:has(*)) {
+    &::after {
+      content: "\200B";
+      display: inline-block;
+      min-height: 40px;
+      width: 100%;
+    }
+  }
+}
+
+// Ensure table blocks have minimum height and are interactive
+.ql-table-block {
+  min-height: 2em;
+  display: block;
+  position: relative;
+  
+  // Make empty blocks clickable
+  &:empty {
+    min-height: 2em;
+    
+    &::after {
+      content: "\200B"; // Zero-width space for cursor positioning
+      display: inline-block;
+      min-height: 1.5em;
+      width: 100%;
+    }
+  }
+}
+
 .ql-table-menus-container {
   position: absolute;
   display: flex;
@@ -592,3 +644,10 @@ ol.table-list-container {
   60% { transform: translateX(-1px); }
   80% { transform: translateX(1px); }
 }
+
+// .ql-operate-line-container,
+// .ql-operate-block,
+// .ql-operate-drag-table {
+//   display: none !important;
+//   pointer-events: none !important;
+// }

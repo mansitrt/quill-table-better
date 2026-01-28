@@ -618,7 +618,12 @@ class TableContainer extends Container {
   }
 
   getMaxColumns(children: LinkedList<TableCell>) {
+    if (!children) return 0;
     return children.reduce((num: number, child: TableCell) => {
+      if (!child || !child.domNode) {
+        console.warn('Skipping null child in getMaxColumns');
+        return num;
+      }
       const colspan = ~~child.domNode.getAttribute('colspan') || 1;
       return num += colspan;
     }, 0);
@@ -636,15 +641,28 @@ class TableContainer extends Container {
     const cols: [TableColgroup, TableCol | null][] = [];
     const rows = this.descendants(TableRow);
     for (const row of rows) {
+      if (!row || !row.children) {
+        console.warn('Skipping row with null children in insertColumn');
+        continue;
+      }
+      
       if (isLast && offset > 0) {
-        if (row.children && row.children.tail && row.children.tail.domNode) {
-          const id = row.children.tail.domNode.getAttribute('data-row') || '';
-          columnCells.push([row, id, null, null]);
+        // Check if row.children.tail exists and has domNode
+        if (row.children.tail && row.children.tail.domNode) {
+          try {
+            const id = row.children.tail.domNode.getAttribute('data-row') || '';
+            columnCells.push([row, id, null, null]);
+          } catch (error) {
+            console.warn('Error accessing row.children.tail.domNode:', error);
+          }
         } else {
-          console.warn('Skipping row with null children or domNode in insertColumn');
+          console.warn('Skipping row with null tail or domNode in insertColumn');
         }
       } else {
-        this.setColumnCells(row, columnCells, { position });
+        // Only call setColumnCells if row has children
+        if (row.children.head) {
+          this.setColumnCells(row, columnCells, { position });
+        }
       }
     }
     
@@ -671,11 +689,11 @@ class TableContainer extends Container {
         }
       }
     }
-    for (const [row, id, ref] of columnCells) {
+    for (const [row, formats, ref, prev] of columnCells) {
       if (!row) {
         this.setCellColspan(ref, 1);
       } else {
-        this.insertColumnCell(row, id, ref);
+        this.insertColumnCell(row, formats, ref);
       }
     }
     for (const [colgroup, ref] of cols) {
@@ -688,18 +706,25 @@ class TableContainer extends Container {
     colgroup.insertBefore(col, ref);
   }
 
-  insertColumnCell(row: TableRow | TableThRow, id: string, ref: TableCell | TableTh) {
+  insertColumnCell(row: TableRow | TableThRow, formats: Props | string, ref: TableCell | TableTh) {
     if (!row) {
       const tbody = this.tbody();
       row = this.scroll.create(TableRow.blotName) as TableRow;
       tbody.insertBefore(row, null);
     }
-    const colgroup = this.colgroup();
-    const formats = colgroup ? { 'data-row': id } : { 'data-row': id };
     const isTableRow = row.statics.blotName === TableRow.blotName;
     const cellBlotName = isTableRow ? TableCell.blotName : TableTh.blotName;
     const blockBlotName = isTableRow ? TableCellBlock.blotName : TableThBlock.blotName;
-    const cell = this.scroll.create(cellBlotName, formats) as TableCell;
+    
+    // Ensure formats is an object and includes data-row if it's a string
+    let cellFormats: Props = {};
+    if (typeof formats === 'string') {
+      cellFormats = { 'data-row': formats };
+    } else {
+      cellFormats = { ...formats };
+    }
+    
+    const cell = this.scroll.create(cellBlotName, cellFormats) as TableCell;
     const cellBlock = this.scroll.create(blockBlotName, cellId()) as TableCellBlock;
     cell.appendChild(cellBlock);
     row.insertBefore(cell, ref);

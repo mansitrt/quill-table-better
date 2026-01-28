@@ -67,6 +67,7 @@ class Table extends Module {
   defaultFormats: any = null;
   // Class field for tracking last clicked cell
   lastClickedCell: HTMLElement | null = null;
+  private userDeselectedFormats: any = {}; // NEW: Track user deselections
   formatsToPersist = [
     'bold', 'italic', 'underline', 'strike',
     'font', 'size',
@@ -207,147 +208,154 @@ class Table extends Module {
     return text.replace(/\u200B/g, '').trim() === '';
   }
 
-  setupTableCellFormatting() {
-    this.quill.root.addEventListener('click', (event: any) => {
-
-
-      console.log('event', event);
-      // Get current selection
-      const range = this.quill.getSelection();
-      if (!range) return;
-
-      console.log("range", range);
-
-      const tableModule = this.quill.getModule('table-better');
-      if (!tableModule) return true;
-
-      // Check if we're in a table cell
-      const [__, _, cell] = tableModule.getTable(range);
-      if (!cell) return;
-
-      // Get formats at current position
-      let formats = this.quill.getFormat(range);
-
-      // If the cell is empty, apply inherited or last-used formats
-      if (this.cellIsEmpty(cell)) {
-
-        console.log("coming here check it");
-        // Try to get formats from non-empty cells above or fallback to last used
-        let inheritedFormats = {};
-        // 1. Try to get formats from the previous non-empty cell in the same column
-        let row: any = cell.parent;
-        let colIndex = Array.from(row.children).indexOf(cell);
-        let prevRow = row.prev;
-        while (prevRow) {
-          let prevCell = prevRow?.children[colIndex];
-          if (prevCell && !this.cellIsEmpty(prevCell)) {
-            const prevCellIndex = this.quill.getIndex(prevCell);
-            if (prevCellIndex != null && prevCellIndex !== -1) {
-              inheritedFormats = this.quill.getFormat(prevCellIndex);
-            }
-          }
-          prevRow = prevRow.prev;
+setupTableCellFormatting() {
+  this.quill.root.addEventListener('click', (event: any) => {
+    // Get current selection
+    let range = this.quill.getSelection();
+    if (!range) {
+      // Try to get cell from click event
+      const clickedElement = event.target as Element;
+      const cell = clickedElement.closest('td, th');
+      if (cell) {
+        const cellBlot = Quill.find(cell);
+        if (cellBlot) {
+          const cellIndex = this.quill.getIndex(cellBlot);
+          this.quill.setSelection(cellIndex, 0, Quill.sources.SILENT);
+          range = this.quill.getSelection();
         }
-        // 2. If nothing found, fallback to lastFormat or defaultFormats
-        if (!Object.keys(inheritedFormats).length) {
-          inheritedFormats = this.lastFormat || this.defaultFormats || {};
-        }
-        setTimeout(() => {
-          // Find the new cell and set selection
-          const range = this.quill.getSelection();
-          const tableModule = this.quill.getModule('table-better');
-          if (!tableModule) return true;
-          const [__, _, cell] = tableModule.getTable(range);
-          if (cell) {
-            // Apply fallback formats if needed
-            this.safelyApplyFormats(cell, range, inheritedFormats);
-            // --- Force toolbar update ---
-            if (range) {
-              // 1. Re-apply the selection to trigger Quill's internal update
-              this.quill.setSelection(range.index, range.length, Quill.sources.SILENT);
-
-              // 2. Emit a selection-change event to force all modules (including toolbar) to update
-              if (this.quill.emitter) {
-                this.quill.emitter.emit('selection-change', range, range, Quill.sources.USER);
-              }
-            }
-
-          }
-        }, 50);
-
       }
+      if (!range) return;
+    }
 
-      // Find toolbar elements directly
-      setTimeout(() => {
+    const tableModule = this.quill.getModule('table-better');
+    if (!tableModule) return;
 
-        // Find all toolbar buttons and selects
-        const toolbarContainer = document.querySelector('.ql-toolbar');
-        if (!toolbarContainer) return;
+    // Check if we're in a table cell
+    const [__, _, cell] = tableModule.getTable(range);
+    if (!cell) return;
 
-        // Process all format buttons
-        Object.keys(formats).forEach(format => {
-          const value = formats[format];
+    // // Get the cell's text length to check if it has content
+    // const cellIndex = this.quill.getIndex(cell);
+    // const cellLength = cell.length();
+    
+    // // Get formats from the cell content (not just the cursor position)
+    // let formats: any = {};
+    // if (cellLength > 1) {
+    //   // Cell has content - get formats from the first character of content
+    //   formats = this.quill.getFormat(cellIndex, 1);
+    // } else {
+    //   // Empty cell - get formats at cursor
+    //   formats = this.quill.getFormat(range);
+    // }
 
-          // Handle buttons with specific values (like headers, list, etc.)
-          if (value !== true) {
-            // For buttons with values (like h1, h2, ordered list, etc.)
-            const formatButtons = toolbarContainer.querySelectorAll(`.ql-${format}`);
-            formatButtons.forEach(button => {
-              const buttonValue = button.getAttribute('value');
-              const isActive = buttonValue === value ||
-                (buttonValue && value && buttonValue.toString() === value.toString());
+    // console.log('Cell formats detected:', formats);
 
-              if (isActive) {
-                button.classList.add('ql-active');
-                button.setAttribute('aria-pressed', 'true');
-              } else {
-                button.classList.remove('ql-active');
-                button.setAttribute('aria-pressed', 'false');
-              }
-            });
+    // // Update toolbar UI immediately
+    // setTimeout(() => {
+    //   this.updateToolbarUI(formats);
+    // }, 10);
+  });
+}
 
-            // Handle select elements (like font, size, etc.)
-            const selectElements = toolbarContainer.querySelectorAll(`select.ql-${format}`);
-            selectElements.forEach(select => {
-              const options = select.querySelectorAll('option');
-              options.forEach(option => {
-                if (option.value === value || option.value === value?.toString()) {
-                  (option as HTMLOptionElement).selected = true;
-                }
-              });
-            });
-          } else {
-            // For toggle buttons (like bold, italic, etc.)
-            const buttons = toolbarContainer.querySelectorAll(`.ql-${format}`);
-            buttons.forEach(button => {
-              button.classList.add('ql-active');
-              button.setAttribute('aria-pressed', 'true');
-            });
-          }
-        });
+updateToolbarUI(formats: any) {
+  const toolbarContainer = document.querySelector('.ql-toolbar');
+  if (!toolbarContainer) return;
 
-        // Remove active class from buttons that don't match current formats
-        const allButtons = toolbarContainer.querySelectorAll('button.ql-active');
-        allButtons.forEach(button => {
-          let className = Array.from(button.classList).find(c => c.startsWith('ql-'));
-          if (!className) return;
+  // Filter out formats that user explicitly deselected
+  const filteredFormats = { ...formats };
+  Object.keys(this.userDeselectedFormats).forEach(format => {
+    if (this.userDeselectedFormats[format]) {
+      delete filteredFormats[format];
+    }
+  });
 
-          const format = className.substring(3); // Remove 'ql-' prefix
-          if (!formats[format]) {
-            button.classList.remove('ql-active');
-            button.setAttribute('aria-pressed', 'false');
-          }
-        });
-      }, 10);
+  // Update format buttons (bold, italic, underline, strike)
+  ['bold', 'italic', 'underline', 'strike'].forEach(format => {
+    const buttons = toolbarContainer.querySelectorAll(`.ql-${format}`);
+    buttons.forEach(button => {
+      if (filteredFormats[format]) {
+        button.classList.add('ql-active');
+        button.setAttribute('aria-pressed', 'true');
+      } else {
+        button.classList.remove('ql-active');
+        button.setAttribute('aria-pressed', 'false');
+      }
     });
+  });
+
+  // Update font picker using Quill's toolbar update mechanism
+  if (formats.font) {
+    const fontSelect = toolbarContainer.querySelector('.ql-font') as HTMLSelectElement;
+    if (fontSelect) {
+      // Set the select value
+      fontSelect.value = formats.font;
+      // Trigger change event to update Quill's internal state
+      fontSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      // Update the label
+      const fontLabel = toolbarContainer.querySelector('.ql-font .ql-picker-label');
+      if (fontLabel) {
+        fontLabel.setAttribute('data-value', formats.font);
+        fontLabel.classList.add('ql-active');
+      }
+    }
+  } else {
+    const fontLabel = toolbarContainer.querySelector('.ql-font .ql-picker-label');
+    if (fontLabel) {
+      fontLabel.classList.remove('ql-active');
+    }
   }
+
+  // Update size picker using Quill's toolbar update mechanism
+  if (formats.size) {
+    const sizeSelect = toolbarContainer.querySelector('.ql-size') as HTMLSelectElement;
+    if (sizeSelect) {
+      // Set the select value
+      sizeSelect.value = formats.size;
+      // Trigger change event to update Quill's internal state
+      sizeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      // Update the label
+      const sizeLabel = toolbarContainer.querySelector('.ql-size .ql-picker-label');
+      if (sizeLabel) {
+        sizeLabel.setAttribute('data-value', formats.size);
+        sizeLabel.classList.add('ql-active');
+      }
+    }
+  } else {
+    const sizeLabel = toolbarContainer.querySelector('.ql-size .ql-picker-label');
+    if (sizeLabel) {
+      sizeLabel.classList.remove('ql-active');
+    }
+  }
+
+  // Update color buttons
+  if (formats.color) {
+    const colorButton = toolbarContainer.querySelector('.ql-color .ql-picker-label');
+    if (colorButton) {
+      const colorIcon = colorButton.querySelector('.ql-stroke');
+      if (colorIcon) {
+        (colorIcon as HTMLElement).style.stroke = formats.color;
+      }
+    }
+  }
+
+  if (formats.background) {
+    const bgButton = toolbarContainer.querySelector('.ql-background .ql-picker-label');
+    if (bgButton) {
+      const bgIcon = bgButton.querySelector('.ql-fill');
+      if (bgIcon) {
+        (bgIcon as HTMLElement).style.fill = formats.background;
+      }
+    }
+  }
+}
+
 
 
   setupFormatPersistence() {
     let isInTable = false;
     let currentCell: any = null;
     let activeFormats: any = {};
-    let isPerformingTableOperation = false; // Flag to track when table operations are happening
+    let isPerformingTableOperation = false;
 
     // List of formats we want to persist
     const formatsToPersist = [
@@ -356,36 +364,6 @@ class Table extends Module {
       'color', 'background',
       'align'
     ];
-
-    // Helper method to safely apply formats without interfering with table operations
-    const safelyApplyFormats = (cell: any, range: any, formats: any) => {
-      if (Object.keys(formats).length === 0 || isPerformingTableOperation) return;
-
-      // Get cell content length
-      const length = cell?.length() || 0;
-
-      // Safely apply formats
-      const applyFormats = () => {
-        if (isPerformingTableOperation) return; // Don't apply during table operations
-
-        // Apply formats to cursor position
-        Object.keys(formats).forEach(key => {
-          if (formats[key] !== undefined && formatsToPersist.includes(key)) {
-            try {
-              this.quill.format(key, formats[key], Quill.sources.USER);
-              if (length === 0) {
-                this.quill.formatText(range.index, 1, { [key]: formats[key] }, Quill.sources.USER);
-              }
-            } catch (e) {
-              console.log(`Error applying format ${key}:`, e);
-            }
-          }
-        });
-      };
-
-      // Use setTimeout to ensure DOM is stable
-      setTimeout(applyFormats, 10);
-    };
 
     const updateActiveFormats = (range: any) => {
       if (!range) return;
@@ -399,6 +377,72 @@ class Table extends Module {
       });
     };
 
+    // Listen for toolbar format changes to detect when user deselects formats
+    const updateFormatsFromToolbar = () => {
+      if (!isInTable || !currentCell) return;
+      
+      const range = this.quill.getSelection();
+      if (!range) return;
+      
+      // Check toolbar button states directly instead of cursor formats
+      const toolbarContainer = toolbar?.container;
+      if (!toolbarContainer) return;
+      
+      // Update activeFormats based on toolbar button states
+      ['bold', 'italic', 'underline', 'strike'].forEach(format => {
+        const button = toolbarContainer.querySelector(`.ql-${format}`);
+        if (button) {
+          const isActive = button.classList.contains('ql-active');
+          const wasActive = activeFormats[format] === true;
+          
+          if (isActive) {
+            activeFormats[format] = true;
+            // User turned it on - remove from deselected list
+            delete this.userDeselectedFormats[format];
+          } else {
+            // Button is not active
+            if (wasActive) {
+              // User just turned it off - mark as explicitly deselected
+              this.userDeselectedFormats[format] = true;
+              console.log(`User deselected ${format}`);
+            }
+            delete activeFormats[format];
+          }
+        }
+      });
+      
+      // For other formats (font, size, color, etc.), check their values
+      const currentFormats = this.quill.getFormat(range);
+      ['font', 'size', 'color', 'background', 'align'].forEach(format => {
+        if (currentFormats[format] !== undefined && currentFormats[format] !== false) {
+          activeFormats[format] = currentFormats[format];
+        } else if (!currentFormats[format]) {
+          delete activeFormats[format];
+        }
+      });
+      
+      console.log('Updated activeFormats from toolbar:', activeFormats);
+      console.log('User deselected formats:', this.userDeselectedFormats);
+    };
+
+    // Listen for toolbar clicks
+    const toolbar = this.quill.getModule('toolbar');
+    if (toolbar && toolbar.container) {
+      toolbar.container.addEventListener('click', (e: MouseEvent) => {
+        // Small delay to let Quill process the format change first
+        setTimeout(() => {
+          updateFormatsFromToolbar();
+        }, 50);
+      });
+      
+      // Also listen for select changes (for font, size, etc.)
+      toolbar.container.addEventListener('change', (e: Event) => {
+        setTimeout(() => {
+          updateFormatsFromToolbar();
+        }, 50);
+      });
+    }
+
     // Handle selection changes
     this.quill.on('selection-change', (range: any, oldRange: any, source: string) => {
       if (!range) {
@@ -408,7 +452,7 @@ class Table extends Module {
       }
 
       const tableModule = this.quill.getModule('table-better');
-      if (!tableModule) return true;
+      if (!tableModule) return;
 
       const [__, _, cell] = tableModule.getTable(range);
 
@@ -418,50 +462,79 @@ class Table extends Module {
         return;
       }
 
-      // Preserve existing formats before any changes
-      if (oldRange) {
-        const oldFormats = this.quill.getFormat(oldRange);
-        Object.keys(oldFormats).forEach(key => {
-          if (formatsToPersist.includes(key) && oldFormats[key] !== undefined) {
-            activeFormats[key] = oldFormats[key];
-          }
-        });
-      }
-
-      // Handle cell change
-      const handleCellChange = () => {
-        const previousFormats = this.quill.getFormat(oldRange);
-        if (!isInTable || currentCell !== cell) {
-          if (!isInTable) {
-            isInTable = true;
-            // Get default formats only once when entering a table
-            //    const defaultFormats : any = this.getDefaultFormats() || {};
-
-            // Only apply default formats that we want to persist
-            Object.keys(previousFormats).forEach(key => {
-              if (formatsToPersist.includes(key) && previousFormats[key] !== undefined) {
-                activeFormats[key] = previousFormats[key];
-              }
-            });
-
-
-          }
-          updateActiveFormats(range);
-          safelyApplyFormats(cell, range, activeFormats);
-          // if (!isPerformingTableOperation) {
-          //   safelyApplyFormats(cell, range, activeFormats);
-          // }
-          currentCell = cell;
+      // When changing cells, preserve formats from previous cell
+      if (!isInTable || currentCell !== cell) {
+        const wasInTable = isInTable;
+        isInTable = true;
+        
+        // Get the cell's content length and formats
+        const cellBlot = cell;
+        const cellIndex = this.quill.getIndex(cellBlot);
+        const cellLength = cellBlot.length();
+        
+        // Get formats from the cell content (not just cursor position)
+        let newCellFormats: any = {};
+        if (cellLength > 1) {
+          // Cell has content - get formats from the first character of actual content
+          newCellFormats = this.quill.getFormat(cellIndex, 1);
+        } else {
+          // Empty cell - get formats at cursor
+          newCellFormats = this.quill.getFormat(range);
         }
-      };
-
-      // Use setTimeout for better stability
-      setTimeout(handleCellChange, 10);
+        
+        console.log('Cell formats detected:', newCellFormats);
+        
+        // If new cell is empty and we were in a table, preserve previous activeFormats
+        if (wasInTable && currentCell && cellLength <= 1) {
+          // New cell is empty - keep activeFormats from previous cell
+          console.log('New cell is empty, preserving formats from previous cell:', activeFormats);
+          
+          // If activeFormats is empty (e.g., first cell in newly inserted row), use default formats
+          if (Object.keys(activeFormats).length === 0) {
+            const defaultFont = this.defaultFormats?.font || 'Helvetica';
+            const defaultSize = this.defaultFormats?.size || '18pt';
+            activeFormats = {
+              font: defaultFont,
+              size: defaultSize
+            };
+            console.log('No previous formats, using default formats:', activeFormats);
+          }
+          
+          // Update toolbar to show the formats that will be applied
+          this.updateToolbarUI(activeFormats);
+        } else {
+          // New cell has content - read its formats
+          activeFormats = {};
+          formatsToPersist.forEach(key => {
+            if (newCellFormats[key] !== undefined && newCellFormats[key] !== false) {
+              activeFormats[key] = newCellFormats[key];
+            }
+          });
+          console.log('New cell has content, using its formats:', activeFormats);
+          // Update toolbar to show the cell's formats
+          this.updateToolbarUI(activeFormats);
+        }
+        
+        currentCell = cell;
+        // Clear user deselections when moving to a new cell
+        this.userDeselectedFormats = {};
+      } else if (isInTable && currentCell === cell) {
+        // Same cell - update toolbar based on current cursor position
+        const currentFormats = this.quill.getFormat(range);
+        if (Object.keys(currentFormats).length > 0) {
+          this.updateToolbarUI(currentFormats);
+        }
+      }
     });
 
-    // Track format changes
+    // Track format changes AND apply them to new text
     this.quill.on('text-change', (delta: any, oldContents: any, source: string) => {
       if (!isInTable || !currentCell) return;
+
+      // Keep menu visible during all editor changes
+      if (this.tableMenus && this.cellSelection.selectedTds.length > 0) {
+        this.tableMenus.showMenus();
+      }
 
       const range = this.quill.getSelection();
       if (!range) return;
@@ -478,6 +551,11 @@ class Table extends Module {
     this.quill.on('editor-change', (eventName: string, ...args: any[]) => {
       if (!isInTable || !currentCell) return;
 
+      // Keep menu visible during all editor changes
+      if (this.tableMenus && this.cellSelection.selectedTds.length > 0) {
+        this.tableMenus.showMenus();
+      }
+
       const range = this.quill.getSelection();
       if (!range) return;
 
@@ -486,161 +564,124 @@ class Table extends Module {
         if (Object.keys(formats).length > 0) {
           formatsToPersist.forEach(key => {
             if (formats[key] !== undefined) {
-              activeFormats[key] = formats[key];
+                 // Only add the format if user hasn't explicitly deselected it
+                if (!this.userDeselectedFormats[key]) {
+                  activeFormats[key] = formats[key];
+                }
             }
           });
         }
       }
     });
 
-
-    
-  // Hook into other table operations similarly
-  const originalInsertColumn = this.tableMenus.insertColumn;
-  this.tableMenus.insertColumn = function (...args: [HTMLTableColElement, number]) {
-    isPerformingTableOperation = true;
-    const capturedFormats = { ...activeFormats };
-    
-    // Add a delay before opening dropdown menus on iOS to allow keyboard to close
-    // This addresses the issue where dropdown menus don't position correctly when keyboard is open
-    if (typeof window !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent)) {
-      // Store current window height to detect keyboard visibility
-      const windowHeight = window.innerHeight;
-      // If keyboard is likely visible (window height is reduced), delay the operation
-      if (windowHeight < window.outerHeight * 0.8) {
-        // Get the cell to use - either from args or the last clicked cell
-        const [td, offset] = args;
-        const tableModule = this.quill.getModule('table-better') as Table;
-        const cellToUse = td?.isConnected ? td : tableModule.lastClickedCell as HTMLTableColElement;
-        
-        if (!cellToUse || !cellToUse.isConnected) {
-          console.warn('No valid cell reference found for insertColumn operation');
-          return;
-        }
-        
-        // Wait for keyboard to close
-        setTimeout(() => {
-          try {
-            const result = originalInsertColumn.call(this, cellToUse, offset);
-            return result;
-          } catch (error) {
-            console.error('Error in delayed insertColumn operation:', error);
-          }
-        }, 300);
-        return;
-      }
-    }
-
-    const result = originalInsertColumn.apply(this, args);
-
-    setTimeout(() => {
-      isPerformingTableOperation = false;
-      const range = this.quill.getSelection();
-      if (range) {
-        const tableModule = this.quill.getModule('table-better');
-        if (tableModule) {
-          const [table, _, cell] = tableModule.getTable(range);
-          if (cell && table) {
-            // For new cells, apply the formats that were active before the operation
-            safelyApplyFormats(cell, range, capturedFormats);
-          }
-        }
-      }
-    }, 50); // Give it enough time for the DOM to stabilize
-
-    return result;
-    };
-    
-    // Hook into table operations to properly manage format preservation
-    const originalInsertRow = this.tableMenus.insertRow;
-    this.tableMenus.insertRow = function (...args) {
+    // Hook into table operations
+    const originalInsertColumn = this.tableMenus.insertColumn;
+    this.tableMenus.insertColumn = function (...args: [HTMLTableColElement, number]) {
       isPerformingTableOperation = true;
-      // Capture formats before the operation
+      
       const capturedFormats = { ...activeFormats };
-
-      // Add a delay before operations on iOS to allow keyboard to close
-      if (typeof window !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent)) {
-        // Store current window height to detect keyboard visibility
-        const windowHeight = window.innerHeight;
-        // If keyboard is likely visible (window height is reduced), delay the operation
-        if (windowHeight < window.outerHeight * 0.8) {
-          // Get the cell to use - either from args or the last clicked cell
-          const [td, offset] = args;
-          const tableModule = this.quill.getModule('table-better') as Table;
-          const cellToUse = td?.isConnected ? td : tableModule.lastClickedCell as HTMLTableColElement;
-          
-          if (!cellToUse || !cellToUse.isConnected) {
-            console.warn('No valid cell reference found for insertRow operation');
-            return;
+      
+      const getUserDeselectedFormats = () => {
+        try {
+          if (typeof window !== 'undefined' && (window as any).userDeselectedFormats) {
+            return (window as any).userDeselectedFormats;
           }
-          
-          // Wait for keyboard to close
-          setTimeout(() => {
-            try {
-              const result = originalInsertRow.call(this, cellToUse, offset);
-              return result;
-            } catch (error) {
-              console.error('Error in delayed insertRow operation:', error);
-            }
-          }, 300);
-          return;
+        } catch (e) {
+          console.warn('Could not access userDeselectedFormats:', e);
         }
-      }
+        return {};
+      };
 
-      // Perform the original operation
-      const result = originalInsertRow.apply(this, args);
+      const userDeselected = getUserDeselectedFormats();
+      Object.keys(userDeselected).forEach(format => {
+        if (userDeselected[format]) {
+          delete capturedFormats[format];
+        }
+      });
 
-      // After the row is added, we'll apply the formats to the new cells
+      const result = originalInsertColumn.apply(this, args);
+      
       setTimeout(() => {
         isPerformingTableOperation = false;
-        // Get the new cells in the added row and apply formats
-        const range = this.quill.getSelection();
-        if (range) {
-          const tableModule = this.quill.getModule('table-better');
-          if (tableModule) {
-            const [table, _, cell] = tableModule.getTable(range);
-            if (cell && table) {
-              // For new cells, apply the formats that were active before the operation
-              safelyApplyFormats(cell, range, capturedFormats);
-            }
+      }, 100);
+
+      return result;
+    };
+
+    const originalInsertRow = this.tableMenus.insertRow;
+    this.tableMenus.insertRow = function (...args: [HTMLElement, number]) {
+      isPerformingTableOperation = true;
+      
+      const capturedFormats = { ...activeFormats };
+      
+      const getUserDeselectedFormats = () => {
+        try {
+          if (typeof window !== 'undefined' && (window as any).userDeselectedFormats) {
+            return (window as any).userDeselectedFormats;
           }
+        } catch (e) {
+          console.warn('Could not access userDeselectedFormats:', e);
         }
-      }, 50); // Give it enough time for the DOM to stabilize
+        return {};
+      };
+
+      const userDeselected = getUserDeselectedFormats();
+      Object.keys(userDeselected).forEach(format => {
+        if (userDeselected[format]) {
+          delete capturedFormats[format];
+        }
+      });
+
+      const result = originalInsertRow.apply(this, args);
+      
+      setTimeout(() => {
+        isPerformingTableOperation = false;
+      }, 100);
 
       return result;
     };
   }
 
-  safelyApplyFormats(cell: any, range: any, formats: any) {
-    if (Object.keys(formats).length === 0 || this.isPerformingTableOperation) return;
+safelyApplyFormats(cell: any, range: any, formats: any) {
+  if (Object.keys(formats).length === 0 || this.isPerformingTableOperation) return;
 
-    // const length = cell?.length() || 0;
-    const applyFormats = () => {
-      if (this.isPerformingTableOperation) return;
-      const cellIndex = this.quill.getIndex(cell);
-      if (cellIndex != null && cellIndex !== -1) {
-        // Always remove all formats first
-        this.quill.removeFormat(cellIndex, 1, Quill.sources.USER);
+  const cellIndex = this.quill.getIndex(cell);
+  if (cellIndex == null || cellIndex === -1) return;
 
-        // Only apply new formats if any are set to true/non-false
-        const filteredFormats: any = {};
-        Object.keys(formats).forEach(key => {
-          if (
-            formats[key] !== undefined &&
-            formats[key] !== false && // Don't apply false (removal)
-            this.formatsToPersist.includes(key)
-          ) {
-            filteredFormats[key] = formats[key];
-          }
-        });
+  // Filter formats to only include those we want to persist
+  const filteredFormats: any = {};
+  Object.keys(formats).forEach(key => {
+    if (
+      formats[key] !== undefined &&
+      formats[key] !== false && 
+      this.formatsToPersist.includes(key)
+    ) {
+      filteredFormats[key] = formats[key];
+    }
+  });
 
-        if (Object.keys(filteredFormats).length > 0) {
-          this.quill.formatText(cellIndex, 1, filteredFormats, Quill.sources.USER);
-        }
+  if (Object.keys(filteredFormats).length === 0) return;
+
+  console.log("Applying formats to cell:", filteredFormats);
+
+  // Check if cell has content (excluding zero-width spaces)
+  const cellText = cell.domNode?.innerText || '';
+  const hasContent = cellText.replace(/\u200B/g, '').trim().length > 0;
+  
+  if (hasContent) {
+    // Apply formats to existing content using formatText
+    // Don't change selection - let user continue typing
+    this.quill.formatText(cellIndex, cell.length() - 1, filteredFormats, Quill.sources.SILENT);
+    
+    // Update toolbar
+    setTimeout(() => {
+      if (typeof (window as any).updateToolbarUI === 'function') {
+        (window as any).updateToolbarUI(filteredFormats);
       }
-    };
-    setTimeout(applyFormats, 10);
+    }, 20);
   }
+  // For empty cells, do nothing - let Quill handle formatting naturally
+}
 
   handleKeyup(e: KeyboardEvent) {
     if (!this.quill.isEnabled()) return;
@@ -648,6 +689,12 @@ class Table extends Module {
     if (e.ctrlKey && (e.key === 'z' || e.key === 'y')) {
       this.hideTools();
       this.clearHistorySelected();
+    } else {
+      // Keep menu visible while typing in table cells
+      const [table] = this.getTable();
+      if (table) {
+        this.tableMenus.showMenus();
+      }
     }
     this.updateMenus(e);
   }
@@ -670,7 +717,11 @@ class Table extends Module {
     }
     
     if (!table) {
-      this.hideTools();
+      // Check if we clicked on a cell (might be in a different table)
+      const cell = clickTarget.closest('td, th');
+      if (!cell) {
+        this.hideTools();
+      }
       
       // If clicking right after a table, prevent default behavior that might create a row
       if (isParagraphAfterTable) {
@@ -682,7 +733,9 @@ class Table extends Module {
         return;
       }
       
-      this.handleMouseMove();
+      if (!cell) {
+        this.handleMouseMove();
+      }
       return;
     }
     this.cellSelection.handleMousedown(e);
@@ -713,6 +766,13 @@ class Table extends Module {
           maxIndex - minIndex,
           Quill.sources.USER
         );
+      } else {
+        // Clicked outside table - update toolbar with current formats
+        const range = this.quill.getSelection();
+        if (range) {
+          const currentFormats = this.quill.getFormat(range);
+          this.updateToolbarUI(currentFormats);
+        }
       }
       this.quill.root.removeEventListener('mousemove', handleMouseMove);
       this.quill.root.removeEventListener('mouseup', handleMouseup);
@@ -762,6 +822,14 @@ class Table extends Module {
         });
       }, memo);
     }, base);
+    // Mark that a new table is being created BEFORE showTools to prevent layout interference
+    if (this.tableMenus) {
+      this.tableMenus.markTableAsNewlyCreated();
+    }
+    // Clear any old cell selections to prevent scrolling to old tables
+    if (this.cellSelection) {
+      this.cellSelection.clearSelected();
+    }
     this.quill.updateContents(delta, Quill.sources.USER);
     this.quill.setSelection(range.index + _offset, Quill.sources.SILENT);
     this.showTools();
@@ -814,16 +882,23 @@ class Table extends Module {
     });
   }
 
-  showTools(force?: boolean) {
+    showTools(force?: boolean) {
     const [table, , cell] = this.getTable();
     if (!table || !cell) return;
     
     try {
       this.cellSelection.setDisabled(true);
       
+      // Check if table was recently created to prevent unwanted scrolling
+      const timeSinceCreation = Date.now() - (this.tableMenus?.lastTableCreationTime || 0);
+      const isRecentlyCreated = timeSinceCreation < 1000; // Within 1 second
+      
       // Add null check before accessing cell.domNode
       if (cell && cell.domNode) {
-        this.cellSelection.setSelected(cell.domNode, force);
+        // Don't force selection (which triggers scrolling) for newly created tables
+        // This prevents jumping to other tables when creating a new one
+        const shouldForce = isRecentlyCreated ? false : (force !== false);
+        this.cellSelection.setSelected(cell.domNode, shouldForce);
       }
       
       this.tableMenus.showMenus();

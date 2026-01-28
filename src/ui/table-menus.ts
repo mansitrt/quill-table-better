@@ -67,7 +67,7 @@ interface Menu {
 }
 
 interface CustomMenu extends Menu {
-  name: 'column' | 'row' | 'merge' | 'table' | 'cell' | 'wrap' | 'delete' | 'copy';
+  name: 'column' | 'row' | 'table' |  'wrap' | 'delete' | 'copy';
 }
 
 interface MenusDefaults {
@@ -91,6 +91,13 @@ function getMenusConfig(useLanguage: UseLanguageHandler, menus?: string[]): Menu
         left: {
           content: useLanguage('insColL'),
           handler() {
+            // Check if we're on iOS/iPad and use the helper method
+            if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
+              if (this.handleIOSTableOperation('column', 0)) {
+                return;
+              }
+            }
+            
             const { leftTd } = this.getSelectedTdsInfo();
             const bounds = this.table.getBoundingClientRect();
             this.insertColumn(leftTd, 0);
@@ -101,6 +108,13 @@ function getMenusConfig(useLanguage: UseLanguageHandler, menus?: string[]): Menu
         right: {
           content: useLanguage('insColR'),
           handler() {
+            // Check if we're on iOS/iPad and use the helper method
+            if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
+              if (this.handleIOSTableOperation('column', 1)) {
+                return;
+              }
+            }
+            
             const { rightTd } = this.getSelectedTdsInfo();
             const bounds = this.table.getBoundingClientRect();
             this.insertColumn(rightTd, 1);
@@ -113,7 +127,7 @@ function getMenusConfig(useLanguage: UseLanguageHandler, menus?: string[]): Menu
           handler() {
             this.deleteColumn();
           }
-        },
+        }
         // select: {
         //   content: useLanguage('selCol'),
         //   handler() {
@@ -129,18 +143,25 @@ function getMenusConfig(useLanguage: UseLanguageHandler, menus?: string[]): Menu
         this.toggleAttribute(list, tooltip, e);
       },
       children: {
-        header: {
-          content: useLanguage('headerRow'),
-          divider: true,
-          createSwitch: true,
-          handler() {
-            this.toggleHeaderRow();
-            this.toggleHeaderRowSwitch();
-          }
-        },
+        // header: {
+        //   content: useLanguage('headerRow'),
+        //   divider: true,
+        //   createSwitch: true,
+        //   handler() {
+        //     this.toggleHeaderRow();
+        //     this.toggleHeaderRowSwitch();
+        //   }
+        // },
         above: {
           content: useLanguage('insRowAbv'),
           handler() {
+            // Check if we're on iOS/iPad and use the helper method
+            if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
+              if (this.handleIOSTableOperation('row', 0)) {
+                return;
+              }
+            }
+            
             const { leftTd } = this.getSelectedTdsInfo();
             this.insertRow(leftTd, 0);
             this.updateMenus();
@@ -149,6 +170,13 @@ function getMenusConfig(useLanguage: UseLanguageHandler, menus?: string[]): Menu
         below: {
           content: useLanguage('insRowBlw'),
           handler() {
+            // Check if we're on iOS/iPad and use the helper method
+            if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
+              if (this.handleIOSTableOperation('row', 1)) {
+                return;
+              }
+            }
+            
             const { rightTd } = this.getSelectedTdsInfo();
             this.insertRow(rightTd, 1);
             this.updateMenus();
@@ -159,7 +187,7 @@ function getMenusConfig(useLanguage: UseLanguageHandler, menus?: string[]): Menu
           handler() {
             this.deleteRow();
           }
-        },
+        }
         // select: {
         //   content: useLanguage('selRow'),
         //   handler() {
@@ -253,7 +281,7 @@ class TableMenus {
   tableHeaderRow: HTMLElement | null;
   private keyboardWasVisible = false;
   private lastWindowHeight = 0;
-
+  lastTableCreationTime = 0;
   constructor(quill: Quill, tableBetter?: QuillTableBetter) {
     this.quill = quill;
     this.table = null;
@@ -269,6 +297,52 @@ class TableMenus {
     if (typeof window !== 'undefined') {
       // For iOS devices, we can detect keyboard visibility changes by listening to window resize events
       window.addEventListener('resize', this.handleWindowResize.bind(this));
+    }
+
+    // Prevent iOS contextual menu on table cells
+    if (typeof window !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent)) {
+      // Only prevent the contextmenu event, don't interfere with touch/click
+      this.quill.root.addEventListener('contextmenu', (e: Event) => {
+        const target = e.target as Element;
+        const cell = target.closest('td, th');
+        if (cell) {
+          e.preventDefault();
+          e.stopPropagation();
+          return false;
+        }
+      }, false);
+      
+      // Prevent text selection callout on long press
+      this.quill.root.addEventListener('selectstart', (e: Event) => {
+        const target = e.target as Element;
+        const cell = target.closest('td, th');
+        // Only prevent if cell is not focused (not being edited)
+        if (cell && !cell.classList.contains('ql-cell-focused')) {
+          e.preventDefault();
+          return false;
+        }
+      }, false);
+      
+      // Handle touchend on table cells to show table menu instead of contextual menu
+      this.quill.root.addEventListener('touchend', (e: Event) => {
+        const target = e.target as Element;
+        const cell = target.closest('td, th');
+        if (cell) {
+          // Prevent the default behavior that would show the contextual menu
+          e.preventDefault();
+          e.stopPropagation();
+          
+          // Trigger the click handler to show the table menu
+          const clickEvent = new MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+            view: window
+          });
+          cell.dispatchEvent(clickEvent);
+          return false;
+        }
+      }, false);
+
     }
     
     this.root = this.createMenus();
@@ -446,7 +520,7 @@ class TableMenus {
     this.tableBetter.cellSelection.updateSelected('column');
     tableBlot.deleteColumn(changeTds, selTds, this.deleteTable.bind(this), deleteCols);
     updateTableWidth(this.table, bounds, computeBounds.left - computeBounds.right);
-    this.updateMenus();
+    this.showMenus();
   }
 
   deleteRow(isKeyboard: boolean = false) {
@@ -461,7 +535,7 @@ class TableMenus {
     this.tableBetter.cellSelection.updateSelected('row');
     const tableBlot = (Quill.find(selectedTds[0]) as TableCell).table();
     tableBlot.deleteRow(rows, this.deleteTable.bind(this));
-    this.updateMenus();
+    this.showMenus();
   }
 
   deleteTable() {
@@ -470,12 +544,37 @@ class TableMenus {
     const offset = tableBlot.offset(this.quill.scroll);
     const index = this.quill.getIndex(tableBlot);
     tableBlot.remove();
+    // Clean up any orphaned table-related elements
+    // This ensures no leftover ql-table-block elements remain
+    setTimeout(() => {
+      const orphanedBlocks = this.quill.root.querySelectorAll('.ql-table-block[data-cell]');
+      orphanedBlocks.forEach(block => {
+        // Check if this block is not inside a table
+        const parentTable = block.closest('table');
+        if (!parentTable) {
+          // This is an orphaned block, remove it
+          block.remove();
+        }
+      });
+      
+      // Also clean up any orphaned table cells
+      const orphanedCells = this.quill.root.querySelectorAll('td[data-row], th[data-row]');
+      orphanedCells.forEach(cell => {
+        const parentTable = cell.closest('table');
+        if (!parentTable) {
+          cell.remove();
+        }
+      });
+      
+      // Force Quill to update and clean up its internal state
+      this.quill.update(Quill.sources.USER);
+    }, 0);
     this.tableBetter.hideTools();
     this.quill.setSelection(offset - 1, 0, Quill.sources.USER);
 
-       // Editor is empty, set default font and size
-       // Use stored defaults or fall back to reasonable value
-       // Apply default font and size formatting
+    // Editor is empty, set default font and size
+    // Use stored defaults or fall back to reasonable value
+    // Apply default font and size formatting
     const tableModule = this.quill.getModule('table') as Table;
         
     // Get default formats from the table module
@@ -483,10 +582,10 @@ class TableMenus {
     const defaultSize = tableModule?.defaultFormats?.size || tableModule?.lastFormat?.size || '18pt';
 
  
-       // Apply default formats at current cursor position
-       // Use silent source for the first formatting to avoid multiple updates
-       this.quill.format('font', defaultFont, Quill.sources.SILENT);
-       this.quill.format('size', defaultSize, Quill.sources.USER); // USER source for the last one to trigger an update
+    // Apply default formats at current cursor position
+    // Use silent source for the first formatting to avoid multiple updates
+    this.quill.format('font', defaultFont, Quill.sources.SILENT);
+    this.quill.format('size', defaultSize, Quill.sources.USER); // USER source for the last one to trigger an update
  
     // Apply to a small range to ensure formats stick
     const range = this.quill.getSelection() || { index: index, length: 1 };
@@ -781,6 +880,34 @@ class TableMenus {
     }, []);
   }
 
+  handleIOSTableOperation(type: string, offset: number) {
+    // Check if we have a valid last clicked cell
+    const lastClickedCell = this.tableBetter.lastClickedCell;
+    if (!lastClickedCell || !lastClickedCell.isConnected) {
+      return false;
+    }
+    
+    // Check if the keyboard is visible
+    if (!this.keyboardWasVisible) {
+      return false;
+    }
+    
+    // Perform the table operation
+    if (type === 'column') {
+      this.insertColumn(lastClickedCell, offset);
+    } else if (type === 'row') {
+      this.insertRow(lastClickedCell, offset);
+    }
+    
+    // Update the menu position
+    this.updateMenus();
+    
+    // Restore the cell selection
+    this.tableBetter.cellSelection.setSelectedTds([lastClickedCell]);
+    
+    return true;
+  }
+
   handleWindowResize() {
     const currentHeight = window.innerHeight;
     
@@ -844,7 +971,7 @@ class TableMenus {
 
   handleClick(e: MouseEvent) {
     if (!this.quill.isEnabled()) return;
-    const table = (e.target as Element).closest('table');
+    let table = (e.target as Element).closest('table');
     if (table && !this.quill.root.contains(table)) return;
     
     // Store the clicked element to check if it's a menu icon
@@ -865,46 +992,117 @@ class TableMenus {
     const windowHeight = window.innerHeight;
     const keyboardLikelyVisible = isIOS && windowHeight < window.outerHeight * 0.8;
     
-    if (!table && !this.tableBetter.cellSelection.selectedTds.length) {
+    // Get the clicked cell
+    const cell = clickedElement.closest('td, th');
+    
+    // If no table and no cell was clicked, hide menus
+    if (!table && !cell) {
       this.hideMenus();
       this.destroyTablePropertiesForm();
       return;
-    } else {
-      if (this.tablePropertiesForm) return;
+    }
+    
+    // If a cell was clicked but no table found, still don't hide menus
+    // (user might be clicking on a cell within a table)
+    if (cell && !table) {
+      table = cell.closest('table');
+      if (!table) {
+        // Cell is not in a table, hide menus
+        this.hideMenus();
+        this.destroyTablePropertiesForm();
+        return;
+      }
+    }
+    
+    // Don't process if table properties form is open
+    if (this.tablePropertiesForm) return;
+    
+      // If a cell was clicked, handle cell selection and menu display
+    if (cell && !isMenuIconClick) {
+      // Ensure we have the actual td/th element, not a child element
+      const tdElement = cell.tagName === 'TD' || cell.tagName === 'TH' 
+        ? cell 
+        : cell.closest('td, th');
       
-      // Always show menus when clicking on a table or menu icon
+      if (tdElement) {
+        // Update the last clicked cell reference
+        this.tableBetter.lastClickedCell = tdElement as HTMLElement;
+        console.log('Updated last clicked cell:', tdElement);
+        
+        // Ensure table is set from the cell
+        if (!table) {
+          table = tdElement.closest('table');
+          console.log('Found table from cell:', table);
+        }
+        
+        // Use the proper setSelectedTds method to handle all initialization
+        // This will set the cell selection, apply formats, set the cursor position, and update internal state
+        this.tableBetter.cellSelection.setSelectedTds([tdElement as HTMLElement]);
+        
+        // Ensure Quill editor is focused so keyboard appears on mobile
+        this.quill.focus();
+        
+        // Update toolbar to show cell's actual formats
+        try {
+          const cellBlot = Quill.find(tdElement as HTMLElement) as any;
+          if (cellBlot && cellBlot.domNode) {
+            const cellIndex = this.quill.getIndex(cellBlot);
+            const cellFormats = this.quill.getFormat(cellIndex, 1);
+            console.log('Cell formats on click:', cellFormats);
+            
+            if (this.tableBetter && typeof this.tableBetter.updateToolbarUI === 'function') {
+              this.tableBetter.updateToolbarUI(cellFormats);
+            }
+          }
+        } catch (error) {
+          console.warn('Could not update toolbar:', error);
+        }
+
+      }
+    }
+    
+    // Show menus if we have a table or selected cells
+    if (table || this.tableBetter.cellSelection.selectedTds.length > 0) {
       this.showMenus();
       
-      // If clicking on a table cell, update the lastClickedCell reference
-      const cell = clickedElement.closest('td, th');
-      if (cell && !isMenuIconClick) {
-        this.tableBetter.lastClickedCell = cell as HTMLElement;
-        console.log('Updated last clicked cell:', cell);
+      // Update table reference if we have one
+      if (table) {
+        if (!table.isEqualNode(this.table) || this.scroll) {
+          this.updateScroll(false);
+        }
+        this.table = table;
+        // Always pass the clicked cell (tdElement) to updateMenus for accurate positioning
+        // This ensures the menu appears relative to the cell that was actually clicked
+        const cellToPosition = (cell && cell.tagName === 'TD' || cell?.tagName === 'TH') ? cell as HTMLElement : null;
+        this.updateMenus(table, cellToPosition || this.tableBetter.cellSelection.selectedTds[0] as HTMLElement);
+      } else if (this.tableBetter.cellSelection.selectedTds.length > 0) {
+        // Try to find table from selected cells
+        const selectedCell = this.tableBetter.cellSelection.selectedTds[0];
+        const tableFromCell = selectedCell?.closest('table');
+        if (tableFromCell) {
+          this.table = tableFromCell;
+          // Pass the selected cell to updateMenus for accurate positioning
+          this.updateMenus(tableFromCell, selectedCell as HTMLElement);
+        }
       }
-      
-      // If on iOS with keyboard visible and we had a previous selection, restore it
-      if (keyboardLikelyVisible && hasSelection && currentSelectedTds[0]?.isConnected) {
-        // Delay the restoration to allow keyboard to hide first
-        setTimeout(() => {
-          try {
-            // Check if the elements are still valid
-            const validTds = currentSelectedTds.filter(td => td && td.isConnected);
-            if (validTds.length > 0) {
-              this.tableBetter.cellSelection.setSelectedTds(validTds);
-            }
-            this.updateMenus(table);
-          } catch (error) {
-            console.error('Error restoring cell selection:', error);
+    }
+    
+    // Handle iOS keyboard visibility restoration
+    if (keyboardLikelyVisible && hasSelection && currentSelectedTds[0]?.isConnected) {
+      requestAnimationFrame(() => {
+        try {
+          const validTds = currentSelectedTds.filter(td => td && td.isConnected);
+          if (validTds.length > 0) {
+            this.tableBetter.cellSelection.setSelectedTds(validTds);
           }
-        }, 300);
-      } else {
-        this.updateMenus(table);
-      }
-      
-      if ((table && !table.isEqualNode(this.table)) || this.scroll) {
-        this.updateScroll(false);
-      }
-      this.table = table;
+          this.showMenus();
+          if (this.table) {
+            this.updateMenus(this.table);
+          }
+        } catch (error) {
+          console.error('Error restoring cell selection:', error);
+        }
+      });
     }
   }
 
@@ -912,7 +1110,11 @@ class TableMenus {
     this.root.classList.add('ql-hidden');
   }
 
-  insertColumn(td: HTMLTableColElement, offset: number) {
+   markTableAsNewlyCreated() {
+    this.lastTableCreationTime = Date.now();
+  }
+
+  insertColumn(td: HTMLElement, offset: number) {
     try {
       // Check if td is valid
       if (!td || !td.isConnected) {
@@ -961,9 +1163,49 @@ class TableMenus {
       const isLast = td.parentElement.lastChild.isEqualNode(td);
       const position = offset > 0 ? right : left;
       
+      // Get the formats from the current cell to apply to new cells
+      const cellFormats = getCellFormats(tdBlot);
+      
       // Insert the column
       tableBlot.insertColumn(position, isLast, width, offset);
+      
+      // Apply formats to newly inserted cells
+      if (cellFormats && cellFormats[0]) {
+        const newCells : any = this.table?.querySelectorAll('td, th') || [];
+        newCells.forEach((cell: any) => {
+          const cellBlot : any = Quill.find(cell) as TableCell;
+          if (cellBlot && !cellBlot.domNode.isEqualNode(td)) {
+            try {
+              // Apply the formats from the source cell to the new cell
+              const [formats] = getCellFormats(cellBlot);
+              Object.keys(cellFormats[0]).forEach(key => {
+                if (key !== 'table' && key !== 'cell' && key !== 'row') {
+                  cellBlot.format(key, cellFormats[0][key]);
+                }
+              });
+            } catch (e) {
+              console.warn('Could not apply formats to new cell:', e);
+            }
+          }
+        });
+      }
       this.quill.scrollSelectionIntoView();
+      
+      // After column insertion, ensure the cell is still selected and menu is updated
+      // Use setTimeout to allow DOM to update before updating menus
+      setTimeout(() => {
+        try {
+          // Verify the original cell is still connected
+          if (td && td.isConnected) {
+            // Re-select the original cell to maintain selection
+            this.tableBetter.cellSelection.setSelectedTds([td]);
+            // Update menu position based on the selected cell
+            this.updateMenus(this.table, td);
+          }
+        } catch (error) {
+          console.warn('Error updating selection after column insertion:', error);
+        }
+      }, 50);
     } catch (error) {
       console.error('Error inserting column:', error);
     }
@@ -1013,7 +1255,7 @@ class TableMenus {
     }
   }
 
-  insertRow(td: HTMLTableColElement, offset: number) {
+  insertRow(td: HTMLElement, offset: number) {
     try {
       // Check if td is valid
       if (!td || !td.isConnected) {
@@ -1065,6 +1307,21 @@ class TableMenus {
       }
       
       this.quill.scrollSelectionIntoView();
+      // After row insertion, ensure the cell is still selected and menu is updated
+      // Use setTimeout to allow DOM to update before updating menus
+      setTimeout(() => {
+      try {
+      // Verify the original cell is still connected
+      if (td && td.isConnected) {
+      // Re-select the original cell to maintain selection
+      this.tableBetter.cellSelection.setSelectedTds([td]);
+      // Update menu position based on the selected cell
+      this.updateMenus(this.table, td);
+      }
+      } catch (error) {
+      console.warn('Error updating selection after row insertion:', error);
+      }
+      }, 50);
     } catch (error) {
       console.error('Error inserting row:', error);
     }
@@ -1134,7 +1391,6 @@ class TableMenus {
     const selectTds = getComputeSelectedTds(computeBounds, this.table, this.quill.container, 'column');
     const { selTds } = this.getCorrectTds(selectTds, computeBounds, leftTd, rightTd);
     this.tableBetter.cellSelection.setSelectedTds(selTds);
-    this.updateMenus();
   }
 
   selectRow() {
@@ -1144,7 +1400,6 @@ class TableMenus {
       return selTds;
     }, []);
     this.tableBetter.cellSelection.setSelectedTds(selectTds);
-    this.updateMenus();
   }
 
   setCellsMap(cell: TableCell, map: TableCellMap) {
@@ -1166,6 +1421,16 @@ class TableMenus {
           this.tableBetter.cellSelection.selectedTds.length === 0) {
         // If we have a last clicked cell but no current selection, restore the selection
         this.tableBetter.cellSelection.setSelectedTds([lastClickedCell]);
+      }
+    }
+    
+    // Update menu position based on selected cell
+    if (this.table && this.tableBetter.cellSelection.selectedTds.length > 0) {
+      const selectedCell = this.tableBetter.cellSelection.selectedTds[0];
+      if (selectedCell && selectedCell.isConnected) {
+        requestAnimationFrame(() => {
+          this.updateMenus(this.table, selectedCell as HTMLElement);
+        });
       }
     }
   }
@@ -1285,7 +1550,7 @@ class TableMenus {
     switchInner.setAttribute('aria-checked', value);
   }
 
-  updateMenus(table: HTMLElement = this.table) {
+  updateMenus(table: HTMLElement = this.table, clickedCell?: HTMLElement) {
     if (!table) return;
     requestAnimationFrame(() => {
       try {
@@ -1299,12 +1564,11 @@ class TableMenus {
         let correctTop = top - height - 10;
         let correctLeft = (left + right - width) >> 1;
         
-        // Check if we have a selected cell to position the menu relative to it
-        const selectedTds = this.tableBetter.cellSelection.selectedTds;
-        if (selectedTds.length > 0 && selectedTds[0].isConnected) {
-          // Position the menu relative to the selected cell instead of the table
-          const selectedCell = selectedTds[0];
-          const cellBounds = getCorrectBounds(selectedCell, this.quill.container);
+        // Use the clicked cell if provided, otherwise use selected cells
+        const cellToPosition = clickedCell || (this.tableBetter.cellSelection.selectedTds.length > 0 ? this.tableBetter.cellSelection.selectedTds[0] : null);
+        // Check if we have a cell to position the menu relative to it
+        if (cellToPosition && cellToPosition.isConnected) {
+          const cellBounds = getCorrectBounds(cellToPosition as Element, this.quill.container);
           
           // Adjust the position based on the selected cell
           correctTop = cellBounds.top - height - 10;
@@ -1316,6 +1580,18 @@ class TableMenus {
             this.root.classList.add('ql-table-triangle-down');
             this.root.classList.remove('ql-table-triangle-up');
           } else {
+            this.root.classList.add('ql-table-triangle-up');
+            this.root.classList.remove('ql-table-triangle-down');
+          }
+          
+          // Ensure menu doesn't go below the viewport
+          // If menu would be pushed off the bottom, place it above the cell instead
+          if (correctTop + height > containerBounds.height) {
+            correctTop = cellBounds.top - height - 10;
+            if (correctTop < 0) {
+              // If still doesn't fit above, place it at the top of the container
+              correctTop = 10;
+            }
             this.root.classList.add('ql-table-triangle-up');
             this.root.classList.remove('ql-table-triangle-down');
           }
@@ -1352,7 +1628,7 @@ class TableMenus {
       } catch (error) {
         console.error('Error in updateMenus:', error);
       }
-    });
+     });
   }
 
   updateScroll(scroll: boolean) {
