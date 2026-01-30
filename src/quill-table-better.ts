@@ -285,45 +285,36 @@ updateToolbarUI(formats: any) {
 
   // Update font picker using Quill's toolbar update mechanism
   if (formats.font) {
-    const fontSelect = toolbarContainer.querySelector('.ql-font') as HTMLSelectElement;
-    if (fontSelect) {
-      // Set the select value
-      fontSelect.value = formats.font;
-      // Trigger change event to update Quill's internal state
-      fontSelect.dispatchEvent(new Event('change', { bubbles: true }));
-      // Update the label
-      const fontLabel = toolbarContainer.querySelector('.ql-font .ql-picker-label');
-      if (fontLabel) {
-        fontLabel.setAttribute('data-value', formats.font);
-        fontLabel.classList.add('ql-active');
+    const fontPicker = toolbarContainer.querySelector('.ql-font .ql-picker-label');
+    if (fontPicker) {
+      fontPicker.setAttribute('data-value', formats.font);
+      fontPicker.classList.add('ql-active');
+      // Update the visible text
+      const labelText = fontPicker.querySelector('.ql-picker-label-text');
+      if (labelText) {
+        labelText.textContent = formats.font;
       }
     }
+
   } else {
-    const fontLabel = toolbarContainer.querySelector('.ql-font .ql-picker-label');
-    if (fontLabel) {
-      fontLabel.classList.remove('ql-active');
+    const fontPicker = toolbarContainer.querySelector('.ql-font .ql-picker-label');
+    if (fontPicker) {
+      fontPicker.classList.remove('ql-active');
     }
   }
 
-  // Update size picker using Quill's toolbar update mechanism
+  // Update size picker - both data attribute AND visible label
   if (formats.size) {
-    const sizeSelect = toolbarContainer.querySelector('.ql-size') as HTMLSelectElement;
-    if (sizeSelect) {
-      // Set the select value
-      sizeSelect.value = formats.size;
-      // Trigger change event to update Quill's internal state
-      sizeSelect.dispatchEvent(new Event('change', { bubbles: true }));
-      // Update the label
-      const sizeLabel = toolbarContainer.querySelector('.ql-size .ql-picker-label');
-      if (sizeLabel) {
-        sizeLabel.setAttribute('data-value', formats.size);
-        sizeLabel.classList.add('ql-active');
-      }
+    const sizePicker = toolbarContainer.querySelector('.ql-size .ql-picker-label');
+    if (sizePicker) {
+      sizePicker.setAttribute('data-value', formats.size);
+      sizePicker.classList.add('ql-active');
     }
   } else {
-    const sizeLabel = toolbarContainer.querySelector('.ql-size .ql-picker-label');
-    if (sizeLabel) {
-      sizeLabel.classList.remove('ql-active');
+    // If no size format, remove active class
+    const sizePicker = toolbarContainer.querySelector('.ql-size .ql-picker-label');
+    if (sizePicker) {
+      sizePicker.classList.remove('ql-active');
     }
   }
 
@@ -518,16 +509,18 @@ updateToolbarUI(formats: any) {
         currentCell = cell;
         // Clear user deselections when moving to a new cell
         this.userDeselectedFormats = {};
-      } else if (isInTable && currentCell === cell) {
-        // Same cell - update toolbar based on current cursor position
-        const currentFormats = this.quill.getFormat(range);
-        if (Object.keys(currentFormats).length > 0) {
-          this.updateToolbarUI(currentFormats);
-        }
       }
+      // } else if (isInTable && currentCell === cell) {
+      //   // Same cell - update toolbar based on current cursor position
+      //   const currentFormats = this.quill.getFormat(range);
+      //   if (Object.keys(currentFormats).length > 0) {
+      //     this.updateToolbarUI(currentFormats);
+      //   }
+      // }
     });
 
     // Track format changes AND apply them to new text
+        // Track format changes AND apply them to new text
     this.quill.on('text-change', (delta: any, oldContents: any, source: string) => {
       if (!isInTable || !currentCell) return;
 
@@ -540,6 +533,34 @@ updateToolbarUI(formats: any) {
       if (!range) return;
 
       if (source === Quill.sources.USER) {
+        // Remove any formats that user explicitly deselected
+        const formatsToApply = { ...activeFormats };
+        Object.keys(this.userDeselectedFormats).forEach(format => {
+          delete formatsToApply[format];
+        });
+        
+        // Apply formats to newly typed text
+        if (Object.keys(formatsToApply).length > 0) {
+          let position = 0;
+          for (const op of delta.ops) {
+            if (op.retain) {
+              position += op.retain;
+            } else if (op.insert && typeof op.insert === 'string') {
+              // Apply formats to the inserted text using formatText (safe for tables)
+              this.quill.formatText(position, op.insert.length, formatsToApply, Quill.sources.SILENT);
+              // Update toolbar UI to show active formats
+              this.updateToolbarUI(formatsToApply);
+              break;
+            }
+          }
+        }
+        
+        // Update toolbar to show current formats at cursor position
+        const currentFormats = this.quill.getFormat(range);
+        if (Object.keys(currentFormats).length > 0) {
+          this.updateToolbarUI(currentFormats);
+        }
+        
         setTimeout(() => {
           // Delay format update to ensure all changes are processed
           updateActiveFormats(range);

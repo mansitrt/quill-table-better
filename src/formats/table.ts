@@ -419,6 +419,10 @@ class TableCol extends Block {
     for (const key of keys) {
       node.setAttribute(key, value[key]);
     }
+    // Add these properties to make cells naturally editable
+    node.setAttribute('contenteditable', 'true');
+    node.style.cursor = 'text';
+
     return node;
   }
 

@@ -282,6 +282,7 @@ class TableMenus {
   private keyboardWasVisible = false;
   private lastWindowHeight = 0;
   lastTableCreationTime = 0;
+  private currentTextChangeHandler: (() => void) | null = null;
   constructor(quill: Quill, tableBetter?: QuillTableBetter) {
     this.quill = quill;
     this.table = null;
@@ -999,6 +1000,24 @@ class TableMenus {
     if (!table && !cell) {
       this.hideMenus();
       this.destroyTablePropertiesForm();
+       // Clear any table selection
+      this.tableBetter.cellSelection.clearSelected();
+      
+      // Remove any existing table-block classes from non-table elements
+      const blockElements = this.quill.root.querySelectorAll('.ql-table-block');
+      blockElements.forEach(block => {
+        if (!block.closest('table')) {
+          block.classList.remove('ql-table-block');
+        }
+      });
+      
+      // Ensure clicking below table creates plain paragraph
+      if (e.target === this.quill.root) {
+        const range = this.quill.getSelection(true);
+        if (range) {
+          this.quill.formatLine(range.index, range.length, 'table-block', false);
+        }
+      }
       return;
     }
     
@@ -1028,21 +1047,18 @@ class TableMenus {
         // Update the last clicked cell reference
         this.tableBetter.lastClickedCell = tdElement as HTMLElement;
         console.log('Updated last clicked cell:', tdElement);
-        
-        // Ensure table is set from the cell
-        if (!table) {
-          table = tdElement.closest('table');
-          console.log('Found table from cell:', table);
-        }
-        
-        // Use the proper setSelectedTds method to handle all initialization
-        // This will set the cell selection, apply formats, set the cursor position, and update internal state
-        this.tableBetter.cellSelection.setSelectedTds([tdElement as HTMLElement]);
-        
-        // Ensure Quill editor is focused so keyboard appears on mobile
+
+        // STEP 1: Focus the editor FIRST (before any selection changes)
         this.quill.focus();
         
-        // Update toolbar to show cell's actual formats
+        // STEP 2: Then set the cell selection
+        // This will set cursor position and apply the ql-cell-focused class
+        this.tableBetter.cellSelection.setSelectedTds([tdElement as HTMLElement]);
+        
+        // STEP 2.5: Re-focus after selection to keep keyboard open
+        this.quill.focus();
+        
+        // STEP 3: Update toolbar with cell's formats AFTER selection is set
         try {
           const cellBlot = Quill.find(tdElement as HTMLElement) as any;
           if (cellBlot && cellBlot.domNode) {
@@ -1057,7 +1073,6 @@ class TableMenus {
         } catch (error) {
           console.warn('Could not update toolbar:', error);
         }
-
       }
     }
     
@@ -1292,6 +1307,9 @@ class TableMenus {
       
       const isTh = tdBlot.statics.blotName === TableTh.blotName;
       
+      // Get the formats from the current cell to apply to new cells
+      const cellFormats = getCellFormats(tdBlot);
+      
       if (offset > 0) {
         // Safely get rowspan attribute
         let rowspan = 1;
@@ -1304,6 +1322,26 @@ class TableMenus {
         tableBlot.insertRow(index + offset + rowspan - 1, offset, isTh);
       } else {
         tableBlot.insertRow(index + offset, offset, isTh);
+      }
+      
+      // Apply formats to newly inserted cells in the row
+      if (cellFormats && cellFormats[0]) {
+        const newCells: any = this.table?.querySelectorAll('td, th') || [];
+        newCells.forEach((cell: any) => {
+          const cellBlot: any = Quill.find(cell) as TableCell;
+          if (cellBlot && !cellBlot.domNode.isEqualNode(td)) {
+            try {
+              // Apply the formats from the source cell to the new cell
+              Object.keys(cellFormats[0]).forEach(key => {
+                if (key !== 'table' && key !== 'cell' && key !== 'row' && key !== 'td' && key !== 'th' && key !== 'tr') {
+                  cellBlot.format(key, cellFormats[0][key]);
+                }
+              });
+            } catch (e) {
+              console.warn('Could not apply formats to new cell:', e);
+            }
+          }
+        });
       }
       
       this.quill.scrollSelectionIntoView();
@@ -1424,7 +1462,7 @@ class TableMenus {
       }
     }
     
-    // Update menu position based on selected cell
+   // Update menu position based on selected cell
     if (this.table && this.tableBetter.cellSelection.selectedTds.length > 0) {
       const selectedCell = this.tableBetter.cellSelection.selectedTds[0];
       if (selectedCell && selectedCell.isConnected) {
@@ -1561,16 +1599,18 @@ class TableMenus {
         const toolbar = this.quill.getModule('toolbar');
         // @ts-expect-error
         const computedStyle = getComputedStyle(toolbar.container);
-        let correctTop = top - height - 10;
-        let correctLeft = (left + right - width) >> 1;
         
         // Use the clicked cell if provided, otherwise use selected cells
         const cellToPosition = clickedCell || (this.tableBetter.cellSelection.selectedTds.length > 0 ? this.tableBetter.cellSelection.selectedTds[0] : null);
+        
+        let correctTop: number;
+        let correctLeft: number;
+        
         // Check if we have a cell to position the menu relative to it
         if (cellToPosition && cellToPosition.isConnected) {
           const cellBounds = getCorrectBounds(cellToPosition as Element, this.quill.container);
           
-          // Adjust the position based on the selected cell
+          // Position the menu relative to the cell from the start
           correctTop = cellBounds.top - height - 10;
           correctLeft = (cellBounds.left + cellBounds.right - width) >> 1;
           
@@ -1597,6 +1637,9 @@ class TableMenus {
           }
         } else {
           // Fall back to table-based positioning if no cell is selected
+          correctTop = top - height - 10;
+          correctLeft = (left + right - width) >> 1;
+          
           if (correctTop > -parseInt(computedStyle.paddingBottom)) {
             this.root.classList.add('ql-table-triangle-up');
             this.root.classList.remove('ql-table-triangle-down');
