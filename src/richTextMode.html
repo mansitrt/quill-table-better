@@ -125,12 +125,12 @@
     background-color: rgba(255, 235, 59, 0.5) !important;
   }
 
-  .ql-operate-line-container,
+  /* .ql-operate-line-container,
   .ql-operate-block,
   .ql-operate-drag-table {
     display: none !important;
     pointer-events: none !important;
-  }
+  } */
 </style>
 
 <!-- Include Quill stylesheet -->
@@ -296,6 +296,8 @@
   // Expose userDeselectedFormats globally so quill-table-better.ts can access it
   window.userDeselectedFormats = {};
   const userDeselectedFormats = window.userDeselectedFormats;
+  // Track if we're currently in a table cell
+ let isInTableCell = false;
 
 
   let lastFormats = {};
@@ -2206,8 +2208,9 @@ Quill.register('modules/findAndReplace', FindAndReplace);
   function getTextOfRichTextEditorEdit() {
     snow.enable(true);
     const editor = document.querySelector('.ql-editor');
-    editor.focus();
-    editor.click();
+    // Don't auto-focus on load - only focus when user explicitly interacts
+    // editor.focus();
+    // editor.click();
     const root = snow.root;
     const selectionPosition = Math.round(root.scrollTop / (root.scrollHeight - root.clientHeight) * snow.getLength());
     snow.setSelection(selectionPosition || 0);
@@ -2255,9 +2258,6 @@ Quill.register('modules/findAndReplace', FindAndReplace);
     const currentSelection = snow.getSelection();
     const isFocused = document.activeElement === snow.container;
 
-    // if (isFocused) {
-    //   snow.blur();
-    // }
     // Find the font dropdown in the toolbar
     const fontDropdown = document.querySelector('.ql-font .ql-picker-options');
     if (fontDropdown) {
@@ -2359,9 +2359,6 @@ Quill.register('modules/findAndReplace', FindAndReplace);
     `;
     console.log(`Updated list styling - Size: ${fontSize}`);
 
-    // setTimeout(() => {
-    //   snow.blur(); // Explicitly remove focus
-    // }, 0);
   }
 
 
@@ -3118,8 +3115,6 @@ Quill.register('modules/findAndReplace', FindAndReplace);
         bgLabel.style.fill = cellFormats.background;
       }
     }
-
-    // Don't stop propagation - allow keyboard events to work
   }
 
   // Add event listeners with high priority (capture: true)
@@ -3127,8 +3122,8 @@ Quill.register('modules/findAndReplace', FindAndReplace);
   editor.addEventListener('click', function(e) {
     const cell = e.target.closest('td');
     if (cell) {
-      // Stop propagation to keep keyboard open
-      e.stopPropagation();
+      // Don't stop propagation - let normal click handling occur
+      // This ensures keyboard opens and cursor appears
       
       // Remove focus and conflicting selection classes from ALL cells
       document.querySelectorAll('td').forEach(c => {
@@ -3141,21 +3136,54 @@ Quill.register('modules/findAndReplace', FindAndReplace);
       cell.classList.add('ql-cell-focused');
       console.log('Cell focused:', cell);
       
-      // Keep editor and Quill focused to open keyboard
+      // Mark that we're in a table cell
+      isInTableCell = true;
+      
+      // Ensure cursor positioning inside cell after Quill processes the click
       setTimeout(() => {
+        const cellBlot = Quill.find(cell);
+        if (cellBlot) {
+          const cellIndex = snow.getIndex(cellBlot);
+          // Set cursor to beginning of cell content
+          snow.setSelection(cellIndex, 0);
+        }
+        // Ensure focus for keyboard
         editor.focus();
         snow.focus();
-      }, 0);
+      }, 50); // Increased delay to ensure Quill has processed the click
     }
     // Call the original handler
     updateToolbarFromCell(e);
   }, { capture: true });
   
+  // Stop marking as in table cell when clicking outside
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('td')) {
+      isInTableCell = false;
+      // Remove focus and selection classes from ALL cells when clicking outside
+      document.querySelectorAll('td').forEach(c => {
+        c.classList.remove('ql-cell-focused');
+        c.classList.remove('ql-cell-selected');
+        c.classList.remove('ql-cell-selected-after');
+      });
+    }
+  }, { capture: true });
+  
+  // Prevent document blur when in table cell
+  document.addEventListener('blur', function(e) {
+    if (isInTableCell && (e.target === editor || e.target === snow.root)) {
+      console.log('Prevented document blur while in table cell');
+      e.preventDefault();
+      e.stopPropagation();
+      editor.focus();
+      snow.focus();
+    }
+  }, { capture: true });
+  
   editor.addEventListener('touchend', function(e) {
     const cell = e.target.closest('td');
     if (cell) {
-      // Stop propagation to keep keyboard open
-      e.stopPropagation();
+      // Don't stop propagation - let normal touch handling occur
       
       // Remove focus and conflicting selection classes from ALL cells
       document.querySelectorAll('td').forEach(c => {
@@ -3168,11 +3196,21 @@ Quill.register('modules/findAndReplace', FindAndReplace);
       cell.classList.add('ql-cell-focused');
       console.log('Cell focused (touchend):', cell);
       
-      // Keep editor and Quill focused to open keyboard
+      // Mark that we're in a table cell
+      isInTableCell = true;
+      
+      // Ensure cursor positioning inside cell after Quill processes the touch
       setTimeout(() => {
+        const cellBlot = Quill.find(cell);
+        if (cellBlot) {
+          const cellIndex = snow.getIndex(cellBlot);
+          // Set cursor to beginning of cell content
+          snow.setSelection(cellIndex, 0);
+        }
+        // Ensure focus for keyboard
         editor.focus();
         snow.focus();
-      }, 0);
+      }, 50); // Increased delay to ensure Quill has processed the touch
     }
     // Call the original handler
     updateToolbarFromCell(e);
@@ -3225,7 +3263,7 @@ Quill.register('modules/findAndReplace', FindAndReplace);
 
   // All cell handling is done in the main click/touchend handlers above
 
-   // Prevent native context menu on table cells (only on long-press)
+    // Prevent native context menu on table cells (only on long-press)
     let touchTimer;
     document.getElementById('editor').addEventListener('touchstart', function(e) {
       const cell = e.target.closest('td, th');
@@ -3281,12 +3319,10 @@ Quill.register('modules/findAndReplace', FindAndReplace);
       // Send content to native app (preserve this functionality)
       sendContentToNativeApp();
 
-      // Toolbar will be updated by updateToolbarFromCell on next click
     });
     
   })();
 
-  // Click handling is done by the main click/touchend handlers above
 
   // Add keyboard detection for iOS with fixed height
   let currentKeyboardHeight = 0;
