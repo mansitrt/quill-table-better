@@ -68,6 +68,7 @@ class Table extends Module {
   // Class field for tracking last clicked cell
   lastClickedCell: HTMLElement | null = null;
   private userDeselectedFormats: any = {}; // NEW: Track user deselections
+  private activeFormats: any = {}; // NEW: Track active formats in table cells
   formatsToPersist = [
     'bold', 'italic', 'underline', 'strike',
     'font', 'size',
@@ -75,6 +76,7 @@ class Table extends Module {
     'align'
   ];
   isPerformingTableOperation = false;
+  isSettingUpTableCell = false;
 
   static register() {
     Quill.register(TableCellBlock, true);
@@ -108,15 +110,27 @@ class Table extends Module {
     this.tableSelect = new TableSelect();
     this.defaultFormats = options.defaultFormats || {};
         
+    // Override toolbar update method to prevent clearing ql-active classes during table cell selection
+    const toolbar = this.quill.getModule('toolbar');
+    if (toolbar && toolbar.update) {
+      const originalUpdate = toolbar.update;
+      toolbar.update = (range: any) => {
+        // Skip toolbar updates when we're setting up a table cell to prevent clearing ql-active classes
+        if (this.isSettingUpTableCell) {
+          console.log('🔍 SKIPPING toolbar update during table cell setup');
+          return;
+        }
+        // Call original update method
+        originalUpdate.call(toolbar, range);
+      };
+    }
+        
     // Add click handler to track the last clicked cell
     this.quill.root.addEventListener('click', (e: any) => {
-      const target = e.target as HTMLElement;
-      const cell = target.closest('td, th');
-      if (cell) {
-        this.lastClickedCell = cell as HTMLElement;
-        console.log('Last clicked cell tracked:', cell);
-      }
+      // Note: Cell tracking is now handled in table-menus.ts handleClick method
+      // This listener is kept for backward compatibility but doesn't override table-menus tracking
     });
+    
     quill.root.addEventListener('keyup', this.handleKeyup.bind(this));
     quill.root.addEventListener('mousedown', this.handleMousedown.bind(this));
     quill.root.addEventListener('scroll', this.handleScroll.bind(this));
@@ -208,54 +222,59 @@ class Table extends Module {
     return text.replace(/\u200B/g, '').trim() === '';
   }
 
-setupTableCellFormatting() {
-  this.quill.root.addEventListener('click', (event: any) => {
-    // Get current selection
-    let range = this.quill.getSelection();
-    if (!range) {
-      // Try to get cell from click event
-      const clickedElement = event.target as Element;
-      const cell = clickedElement.closest('td, th');
-      if (cell) {
-        const cellBlot = Quill.find(cell);
-        if (cellBlot) {
-          const cellIndex = this.quill.getIndex(cellBlot);
-          this.quill.setSelection(cellIndex, 0, Quill.sources.SILENT);
-          range = this.quill.getSelection();
+  setupTableCellFormatting() {
+    // DISABLED: This click listener was interfering with table cell focus and selection
+    // The table-menus.ts handleClick method now handles all table cell interactions properly
+    // Removing this prevents selection resets and focus loss on normal taps
+    /*
+    this.quill.root.addEventListener('click', (event: any) => {
+      // Get current selection
+      let range = this.quill.getSelection();
+      if (!range) {
+        // Try to get cell from click event
+        const clickedElement = event.target as Element;
+        const cell = clickedElement.closest('td, th');
+        if (cell) {
+          const cellBlot = Quill.find(cell);
+          if (cellBlot) {
+            const cellIndex = this.quill.getIndex(cellBlot);
+            this.quill.setSelection(cellIndex, 0, Quill.sources.SILENT);
+            range = this.quill.getSelection();
+          }
         }
+        if (!range) return;
       }
-      if (!range) return;
-    }
 
-    const tableModule = this.quill.getModule('table-better');
-    if (!tableModule) return;
+      const tableModule = this.quill.getModule('table-better');
+      if (!tableModule) return;
 
-    // Check if we're in a table cell
-    const [__, _, cell] = tableModule.getTable(range);
-    if (!cell) return;
+      // Check if we're in a table cell
+      const [__, _, cell] = tableModule.getTable(range);
+      if (!cell) return;
 
-    // // Get the cell's text length to check if it has content
-    // const cellIndex = this.quill.getIndex(cell);
-    // const cellLength = cell.length();
-    
-    // // Get formats from the cell content (not just the cursor position)
-    // let formats: any = {};
-    // if (cellLength > 1) {
-    //   // Cell has content - get formats from the first character of content
-    //   formats = this.quill.getFormat(cellIndex, 1);
-    // } else {
-    //   // Empty cell - get formats at cursor
-    //   formats = this.quill.getFormat(range);
-    // }
+      // // Get the cell's text length to check if it has content
+      // const cellIndex = this.quill.getIndex(cell);
+      // const cellLength = cell.length();
+      
+      // // Get formats from the cell content (not just the cursor position)
+      // let formats: any = {};
+      // if (cellLength > 1) {
+      //   // Cell has content - get formats from the first character of content
+      //   formats = this.quill.getFormat(cellIndex, 1);
+      // } else {
+      //   // Empty cell - get formats at cursor
+      //   formats = this.quill.getFormat(range);
+      // }
 
-    // console.log('Cell formats detected:', formats);
+      // console.log('Cell formats detected:', formats);
 
-    // // Update toolbar UI immediately
-    // setTimeout(() => {
-    //   this.updateToolbarUI(formats);
-    // }, 10);
-  });
-}
+      // // Update toolbar UI immediately
+      // setTimeout(() => {
+      //   this.updateToolbarUI(formats);
+      // }, 10);
+    });
+    */
+  }
 
 updateToolbarUI(formats: any) {
   const toolbarContainer = document.querySelector('.ql-toolbar');
@@ -345,7 +364,8 @@ updateToolbarUI(formats: any) {
   setupFormatPersistence() {
     let isInTable = false;
     let currentCell: any = null;
-    let activeFormats: any = {};
+    // activeFormats is now a class property, no need to redeclare
+    const activeFormats = this.activeFormats;
     let isPerformingTableOperation = false;
 
     // List of formats we want to persist
@@ -434,8 +454,16 @@ updateToolbarUI(formats: any) {
       });
     }
 
-    // Handle selection changes
+    // Handle selection changes - MINIMAL PROCESSING to prevent table mutations
     this.quill.on('selection-change', (range: any, oldRange: any, source: string) => {
+      // Skip SILENT selections to prevent unwanted mutations
+      if (source === Quill.sources.SILENT) {
+        return;
+      }
+
+      // REMOVED: Guard for table cell setup - we now use SILENT source so no selection-change events are triggered
+
+      // Only track table state, don't trigger any updates
       if (!range) {
         isInTable = false;
         currentCell = null;
@@ -453,74 +481,12 @@ updateToolbarUI(formats: any) {
         return;
       }
 
-      // When changing cells, preserve formats from previous cell
-      if (!isInTable || currentCell !== cell) {
-        const wasInTable = isInTable;
-        isInTable = true;
-        
-        // Get the cell's content length and formats
-        const cellBlot = cell;
-        const cellIndex = this.quill.getIndex(cellBlot);
-        const cellLength = cellBlot.length();
-        
-        // Get formats from the cell content (not just cursor position)
-        let newCellFormats: any = {};
-        if (cellLength > 1) {
-          // Cell has content - get formats from the first character of actual content
-          newCellFormats = this.quill.getFormat(cellIndex, 1);
-        } else {
-          // Empty cell - get formats at cursor
-          newCellFormats = this.quill.getFormat(range);
-        }
-        
-        console.log('Cell formats detected:', newCellFormats);
-        
-        // If new cell is empty and we were in a table, preserve previous activeFormats
-        if (wasInTable && currentCell && cellLength <= 1) {
-          // New cell is empty - keep activeFormats from previous cell
-          console.log('New cell is empty, preserving formats from previous cell:', activeFormats);
-          
-          // If activeFormats is empty (e.g., first cell in newly inserted row), use default formats
-          if (Object.keys(activeFormats).length === 0) {
-            const defaultFont = this.defaultFormats?.font || 'Helvetica';
-            const defaultSize = this.defaultFormats?.size || '18pt';
-            activeFormats = {
-              font: defaultFont,
-              size: defaultSize
-            };
-            console.log('No previous formats, using default formats:', activeFormats);
-          }
-          
-          // Update toolbar to show the formats that will be applied
-          this.updateToolbarUI(activeFormats);
-        } else {
-          // New cell has content - read its formats
-          activeFormats = {};
-          formatsToPersist.forEach(key => {
-            if (newCellFormats[key] !== undefined && newCellFormats[key] !== false) {
-              activeFormats[key] = newCellFormats[key];
-            }
-          });
-          console.log('New cell has content, using its formats:', activeFormats);
-          // Update toolbar to show the cell's formats
-          this.updateToolbarUI(activeFormats);
-        }
-        
-        currentCell = cell;
-        // Clear user deselections when moving to a new cell
-        this.userDeselectedFormats = {};
-      }
-      // } else if (isInTable && currentCell === cell) {
-      //   // Same cell - update toolbar based on current cursor position
-      //   const currentFormats = this.quill.getFormat(range);
-      //   if (Object.keys(currentFormats).length > 0) {
-      //     this.updateToolbarUI(currentFormats);
-      //   }
-      // }
+      // Just track that we're in a table - no format processing or updates for SILENT source
+      isInTable = true;
+      currentCell = cell;
     });
 
     // Track format changes AND apply them to new text
-        // Track format changes AND apply them to new text
     this.quill.on('text-change', (delta: any, oldContents: any, source: string) => {
       if (!isInTable || !currentCell) return;
 
@@ -663,7 +629,12 @@ updateToolbarUI(formats: any) {
     };
   }
 
-safelyApplyFormats(cell: any, range: any, formats: any) {
+  // Expose activeFormats for table menu toolbar updates
+  getActiveFormats() {
+    return this.activeFormats || {};
+  }
+
+  safelyApplyFormats(cell: any, range: any, formats: any) {
   if (Object.keys(formats).length === 0 || this.isPerformingTableOperation) return;
 
   const cellIndex = this.quill.getIndex(cell);
@@ -805,6 +776,12 @@ safelyApplyFormats(cell: any, range: any, formats: any) {
 
   handleScroll() {
     if (!this.quill.isEnabled()) return;
+    
+    // Don't hide tools if a dropdown is currently open
+    if (this.tableMenus?.getDropdownOpen()) {
+      return;
+    }
+    
     this.hideTools();
     this.tableMenus?.updateScroll(true);
   }

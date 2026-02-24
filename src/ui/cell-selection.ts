@@ -433,7 +433,6 @@ class CellSelection {
         for (const td of this.selectedTds) {
           td.classList && td.classList.add('ql-cell-selected');
         }
-        if (!isEqualNode) this.quill.blur();
       }
     }
 
@@ -660,7 +659,6 @@ class CellSelection {
         pasteTd.remove();
       }
     }
-    this.quill.blur();
     this.setSelectedTds(selectedTds);
     this.tableBetter.tableMenus.updateMenus();
     this.quill.scrollSelectionIntoView();
@@ -696,7 +694,7 @@ class CellSelection {
       // The attach function of the toolbar module generated extra cursor
       // when clicked, which needs to be removed.
       this.quill.selection.cursor.remove();
-      this.quill.blur();
+      // Removed: this.quill.blur(); - This was causing focus loss when clicking table cells
     }
   }
 
@@ -817,10 +815,14 @@ class CellSelection {
   }
 
 setSelectedTds(selectedTds: Element[]) {
-  if (!selectedTds || selectedTds.length === 0) return;
+  if (!selectedTds || selectedTds.length === 0) {
+    return;
+  }
   
   let singleCell = selectedTds[0] as HTMLElement;
-  if (!singleCell) return;
+  if (!singleCell) {
+    return;
+  }
   
   // Clear internal state
   this.clearSelected();
@@ -837,7 +839,7 @@ setSelectedTds(selectedTds: Element[]) {
   const cellBlot = Quill.find(singleCell) as TableCell;
   if (cellBlot) {
     const cellIndex = this.quill.getIndex(cellBlot);
-    this.quill.setSelection(cellIndex, 0, Quill.sources.USER);
+    this.quill.setSelection(cellIndex, 0, Quill.sources.SILENT);
   }
 }
 
@@ -859,7 +861,14 @@ setSelectedTds(selectedTds: Element[]) {
         selection.removeAllRanges();
       }
     }
-    this.quill.blur();
+    // REMOVE: this.quill.blur(); - This was hiding the cursor!
+    // INSTEAD: Restore focus to keep cursor visible
+    // **NEW: Skip focus() if we're in a picker selection to prevent keyboard reopening**
+    if (!(window as any).isPickerSelectionActive) {
+      requestAnimationFrame(() => {
+        this.quill.focus();
+      });
+    }
     selectedTds.length && this.setSelectedTds(selectedTds);
   }
 

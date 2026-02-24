@@ -50,6 +50,13 @@ import {
 } from '../config';
 import Table from '../quill-table-better';
 
+// Extend Window interface to include our custom property
+declare global {
+  interface Window {
+    isSettingUpTableCell?: boolean;
+  }
+}
+
 interface Children {
   [propName: string]: {
     content: string;
@@ -98,7 +105,18 @@ function getMenusConfig(useLanguage: UseLanguageHandler, menus?: string[]): Menu
               }
             }
             
-            const { leftTd } = this.getSelectedTdsInfo();
+            const selectedInfo = this.getSelectedTdsInfo();
+            if (!selectedInfo) {
+              console.error('Cannot insert column: no valid cell selected');
+              return;
+            }
+            
+            const { leftTd } = selectedInfo;
+            if (!leftTd || !leftTd.isConnected) {
+              console.error('Cannot insert column: leftTd is invalid or disconnected');
+              return;
+            }
+            
             const bounds = this.table.getBoundingClientRect();
             this.insertColumn(leftTd, 0);
             updateTableWidth(this.table, bounds, CELL_DEFAULT_WIDTH);
@@ -115,7 +133,18 @@ function getMenusConfig(useLanguage: UseLanguageHandler, menus?: string[]): Menu
               }
             }
             
-            const { rightTd } = this.getSelectedTdsInfo();
+            const selectedInfo = this.getSelectedTdsInfo();
+            if (!selectedInfo) {
+              console.error('Cannot insert column: no valid cell selected');
+              return;
+            }
+            
+            const { rightTd } = selectedInfo;
+            if (!rightTd || !rightTd.isConnected) {
+              console.error('Cannot insert column: rightTd is invalid or disconnected');
+              return;
+            }
+            
             const bounds = this.table.getBoundingClientRect();
             this.insertColumn(rightTd, 1);
             updateTableWidth(this.table, bounds, CELL_DEFAULT_WIDTH);
@@ -162,7 +191,18 @@ function getMenusConfig(useLanguage: UseLanguageHandler, menus?: string[]): Menu
               }
             }
             
-            const { leftTd } = this.getSelectedTdsInfo();
+            const selectedInfo = this.getSelectedTdsInfo();
+            if (!selectedInfo) {
+              console.error('Cannot insert row: no valid cell selected');
+              return;
+            }
+            
+            const { leftTd } = selectedInfo;
+            if (!leftTd || !leftTd.isConnected) {
+              console.error('Cannot insert row: leftTd is invalid or disconnected');
+              return;
+            }
+            
             this.insertRow(leftTd, 0);
             this.updateMenus();
           }
@@ -177,7 +217,18 @@ function getMenusConfig(useLanguage: UseLanguageHandler, menus?: string[]): Menu
               }
             }
             
-            const { rightTd } = this.getSelectedTdsInfo();
+            const selectedInfo = this.getSelectedTdsInfo();
+            if (!selectedInfo) {
+              console.error('Cannot insert row: no valid cell selected');
+              return;
+            }
+            
+            const { rightTd } = selectedInfo;
+            if (!rightTd || !rightTd.isConnected) {
+              console.error('Cannot insert row: rightTd is invalid or disconnected');
+              return;
+            }
+            
             this.insertRow(rightTd, 1);
             this.updateMenus();
           }
@@ -283,6 +334,8 @@ class TableMenus {
   private lastWindowHeight = 0;
   lastTableCreationTime = 0;
   private currentTextChangeHandler: (() => void) | null = null;
+  private cellBeforeDropdown: HTMLElement | null = null;
+  private isDropdownOpen = false;
   constructor(quill: Quill, tableBetter?: QuillTableBetter) {
     this.quill = quill;
     this.table = null;
@@ -325,7 +378,7 @@ class TableMenus {
       }, false);
       
       // Handle touchend on table cells to show table menu instead of contextual menu
-      this.quill.root.addEventListener('touchend', (e: Event) => {
+      this.quill.root.addEventListener('touchend', (e: TouchEvent) => {
         const target = e.target as Element;
         const cell = target.closest('td, th');
         if (cell) {
@@ -333,13 +386,15 @@ class TableMenus {
           e.preventDefault();
           e.stopPropagation();
           
-          // Trigger the click handler to show the table menu
-          const clickEvent = new MouseEvent('click', {
+          // Call handleClick directly instead of dispatching synthetic event
+          const mouseEvent = new MouseEvent('click', {
             bubbles: true,
             cancelable: true,
             view: window
           });
-          cell.dispatchEvent(clickEvent);
+          // Set the target to the cell element
+          Object.defineProperty(mouseEvent, 'target', { value: cell });
+          this.handleClick(mouseEvent);
           return false;
         }
       }, false);
@@ -837,7 +892,51 @@ class TableMenus {
   }
 
   getSelectedTdsInfo() {
-    const { startTd, endTd } = this.tableBetter.cellSelection;
+    let { startTd, endTd } = this.tableBetter.cellSelection;
+
+    // Validate and reconnect startTd if necessary
+    if (!startTd || !startTd.isConnected) {
+      console.log('startTd is disconnected, attempting to reconnect...');
+      startTd = this.reconnectCellReference(startTd as HTMLElement);
+      if (startTd) {
+        console.log('Successfully reconnected startTd');
+      } else {
+        console.warn('Failed to reconnect startTd, finding fallback cell');
+        // Fallback: use first selected cell if available
+        if (this.tableBetter.cellSelection.selectedTds.length > 0) {
+          startTd = this.tableBetter.cellSelection.selectedTds[0];
+          if (!startTd.isConnected) {
+            startTd = this.reconnectCellReference(startTd as HTMLElement);
+          }
+        }
+        // Last resort: find any valid cell in the table
+        if (!startTd || !startTd.isConnected) {
+          const table = this.table;
+          if (table) {
+            startTd = table.querySelector('td, th') as HTMLElement;
+          }
+        }
+      }
+    }
+
+    // Validate and reconnect endTd if necessary
+    if (!endTd || !endTd.isConnected) {
+      console.log('endTd is disconnected, attempting to reconnect...');
+      endTd = this.reconnectCellReference(endTd as HTMLElement);
+      if (endTd) {
+        console.log('Successfully reconnected endTd');
+      } else {
+        console.warn('Failed to reconnect endTd, using startTd as fallback');
+        endTd = startTd;
+      }
+    }
+
+    // If we still don't have valid cells, return null
+    if (!startTd || !endTd || !startTd.isConnected || !endTd.isConnected) {
+      console.error('Unable to find valid cells for table operation');
+      return null;
+    }
+
     const startCorrectBounds = getCorrectBounds(startTd, this.quill.container);
     const endCorrectBounds = getCorrectBounds(endTd, this.quill.container);
     const computeBounds = getComputeBounds(startCorrectBounds, endCorrectBounds);
@@ -872,6 +971,51 @@ class TableMenus {
       return 'left';
     }
     return align || 'center';
+  }
+
+  /**
+   * Refreshes the cell selection after table operations to ensure we have valid DOM references.
+   * This is called after insert/delete operations that may have invalidated previous references.
+   */
+  refreshCellSelection() {
+    try {
+      const { cellSelection } = this.tableBetter;
+      const { selectedTds } = cellSelection;
+
+      // Check if any selected cells are disconnected
+      const validCells = selectedTds.filter(td => td && td.isConnected);
+      const hasDisconnectedCells = validCells.length !== selectedTds.length;
+
+      if (hasDisconnectedCells) {
+        console.log('Found disconnected cells in selection, refreshing...');
+
+        if (validCells.length > 0) {
+          // We still have some valid cells, update the selection
+          cellSelection.setSelectedTds(validCells);
+        } else {
+          // All cells are disconnected, try to find a valid cell in the table
+          const table = this.table;
+          if (table) {
+            const firstCell = table.querySelector('td, th') as HTMLElement;
+            if (firstCell && firstCell.isConnected) {
+              console.log('No valid cells in selection, selecting first available cell');
+              cellSelection.setSelectedTds([firstCell]);
+            } else {
+              console.warn('Unable to find any valid cells in table after refresh');
+            }
+          }
+        }
+      }
+
+      // Update the internal startTd and endTd references
+      const { selectedTds: updatedSelectedTds } = cellSelection;
+      if (updatedSelectedTds.length > 0) {
+        cellSelection.startTd = updatedSelectedTds[0];
+        cellSelection.endTd = updatedSelectedTds[updatedSelectedTds.length - 1] || updatedSelectedTds[0];
+      }
+    } catch (error) {
+      console.error('Error refreshing cell selection:', error);
+    }
   }
 
   getTdsFromMap(map: TableCellMap) {
@@ -971,6 +1115,12 @@ class TableMenus {
   }
 
   handleClick(e: MouseEvent) {
+     // Add detection for double-tap/double-click
+    if (e.detail === 2) {
+      // For double-taps, only allow text selection
+      // but prevent any table structure changes
+      return;
+    }
     if (!this.quill.isEnabled()) return;
     let table = (e.target as Element).closest('table');
     if (table && !this.quill.root.contains(table)) return;
@@ -996,8 +1146,12 @@ class TableMenus {
     // Get the clicked cell
     const cell = clickedElement.closest('td, th');
     
+    // Check if we're clicking on the menus container itself (dropdown, tooltip, etc.)
+    const isClickingOnMenus = clickedElement.closest('.ql-table-menus-container') !== null;
+    
     // If no table and no cell was clicked, hide menus
-    if (!table && !cell) {
+    // BUT: Don't hide if we're clicking on the menus themselves (dropdown, etc.)
+    if (!table && !cell && !isClickingOnMenus) {
       this.hideMenus();
       this.destroyTablePropertiesForm();
        // Clear any table selection
@@ -1018,6 +1172,23 @@ class TableMenus {
           this.quill.formatLine(range.index, range.length, 'table-block', false);
         }
       }
+
+      // FOCUS FOR AUTO-SCROLL: Use adjustScrollForSelection for scrolling
+      console.log('🔍 HANDLECLICK: Calling adjustScrollForSelection for regular text click');
+      if (typeof window !== 'undefined' && (window as any).adjustScrollForSelection) {
+        const editor = document.getElementById('editor');
+        const currentSelection = this.quill.getSelection();
+        if (editor && currentSelection) {
+          (window as any).adjustScrollForSelection(currentSelection.index, editor, this.quill);
+        }
+      }
+       else {
+        // Fallback: just focus the editor
+        requestAnimationFrame(() => {
+          this.quill.focus();
+        });
+      }
+
       return;
     }
     
@@ -1036,8 +1207,13 @@ class TableMenus {
     // Don't process if table properties form is open
     if (this.tablePropertiesForm) return;
     
-      // If a cell was clicked, handle cell selection and menu display
+    // If a cell was clicked, handle cell selection and menu display
     if (cell && !isMenuIconClick) {
+      console.log(`🔍 HANDLECLICK: Cell clicked, starting selection process`);
+
+      // Prevent event bubbling to toolbar buttons
+      e.stopPropagation();
+
       // Ensure we have the actual td/th element, not a child element
       const tdElement = cell.tagName === 'TD' || cell.tagName === 'TH' 
         ? cell 
@@ -1046,39 +1222,63 @@ class TableMenus {
       if (tdElement) {
         // Update the last clicked cell reference
         this.tableBetter.lastClickedCell = tdElement as HTMLElement;
-        console.log('Updated last clicked cell:', tdElement);
-
-        // STEP 1: Focus the editor FIRST (before any selection changes)
-        this.quill.focus();
         
-        // STEP 2: Then set the cell selection
-        // This will set cursor position and apply the ql-cell-focused class
+        // STEP 1: Set flag to prevent selection-change handler from overriding toolbar
+        window.isSettingUpTableCell = true;
+        
+        // STEP 2: Show the table menu FIRST to prevent iOS from triggering duplicate selection calls
+        // This ensures showMenus() doesn't try to restore selection when we already have it
+        // this.quill.focus(); // Removed: Focus called before selection setup was causing timing conflicts
+        this.showMenus();
+        
+        // STEP 3: Set the cell selection (this will apply ql-cell-focused class)
+        // Use a simple, single call that doesn't interfere with subsequent operations
         this.tableBetter.cellSelection.setSelectedTds([tdElement as HTMLElement]);
         
-        // STEP 2.5: Re-focus after selection to keep keyboard open
-        this.quill.focus();
+        // STEP 4: Focus the editor AFTER all selection setup is complete
+        // NOTE: Don't override cursor position here - let handlePreciseTextPositioning handle it
+        requestAnimationFrame(() => {
+          this.quill.focus();
+        });
         
-        // STEP 3: Update toolbar with cell's formats AFTER selection is set
-        try {
-          const cellBlot = Quill.find(tdElement as HTMLElement) as any;
-          if (cellBlot && cellBlot.domNode) {
-            const cellIndex = this.quill.getIndex(cellBlot);
-            const cellFormats = this.quill.getFormat(cellIndex, 1);
-            console.log('Cell formats on click:', cellFormats);
-            
-            if (this.tableBetter && typeof this.tableBetter.updateToolbarUI === 'function') {
-              this.tableBetter.updateToolbarUI(cellFormats);
-            }
+        // STEP 5: Update toolbar UI to reflect current cell formatting
+        setTimeout(() => {
+          // Get the active formats being tracked by the table-better module
+          // These are the formats that have been applied to content in this cell
+          const tableBetter = this.tableBetter;
+          if (tableBetter && typeof tableBetter.getActiveFormats === 'function') {
+            const activeFormats = tableBetter.getActiveFormats();
+            this.tableBetter.updateToolbarUI(activeFormats);
           }
-        } catch (error) {
-          console.warn('Could not update toolbar:', error);
+        }, 10); // Reduced delay since we have the flag set
+        
+        // STEP 6: Clear the flag after toolbar update
+        setTimeout(() => {
+          window.isSettingUpTableCell = false;
+        }, 100);
+        
+        // STEP 7: Ensure the cell scrolls into view
+        if (typeof window !== 'undefined' && (window as any).adjustScrollForSelection) {
+          const editor = document.getElementById('editor');
+          const currentSelection = this.quill.getSelection();
+          if (editor && currentSelection) {
+            (window as any).adjustScrollForSelection(currentSelection.index, editor, this.quill);
+          }
         }
+        
+      }
+    } else if (isMenuIconClick && hasSelection) {
+      // When clicking on a dropdown icon, preserve the current cell selection
+      // Don't change the selection, just keep the current one active
+      if (currentSelectedTds.length > 0 && currentSelectedTds[0].isConnected) {
+        // Ensure the cell remains focused
+        currentSelectedTds[0].classList.add('ql-cell-focused');
       }
     }
     
-    // Show menus if we have a table or selected cells
+    // Show menus if we have a table or selected cells (menu already shown above, just update position)
     if (table || this.tableBetter.cellSelection.selectedTds.length > 0) {
-      this.showMenus();
+      // Menu was already shown before setSelectedTds(), just update position now
       
       // Update table reference if we have one
       if (table) {
@@ -1102,27 +1302,36 @@ class TableMenus {
       }
     }
     
-    // Handle iOS keyboard visibility restoration
+    // Handle iOS keyboard visibility restoration - simplified to avoid interference
     if (keyboardLikelyVisible && hasSelection && currentSelectedTds[0]?.isConnected) {
-      requestAnimationFrame(() => {
-        try {
-          const validTds = currentSelectedTds.filter(td => td && td.isConnected);
-          if (validTds.length > 0) {
-            this.tableBetter.cellSelection.setSelectedTds(validTds);
+      // Simple keyboard restoration: check if keyboard closes unexpectedly after cell selection
+      setTimeout(() => {
+        // Only restore if we still have a valid selection but keyboard might have closed
+        if (currentSelectedTds.length > 0 && currentSelectedTds[0]?.isConnected) {
+          const currentHeight = window.innerHeight;
+          const keyboardStillVisible = currentHeight < window.outerHeight * 0.85; // More conservative threshold
+
+          if (!keyboardStillVisible) {
+            // Keyboard might have closed - try to reopen it
+            requestAnimationFrame(() => {
+              this.quill.focus();
+            });
           }
-          this.showMenus();
-          if (this.table) {
-            this.updateMenus(this.table);
-          }
-        } catch (error) {
-          console.error('Error restoring cell selection:', error);
         }
-      });
+      }, 500); // Give keyboard time to appear naturally
     }
   }
 
   hideMenus() {
+    // Don't hide menus if a dropdown is currently open
+    if (this.isDropdownOpen) {
+      return;
+    }
     this.root.classList.add('ql-hidden');
+  }
+
+  getDropdownOpen(): boolean {
+    return this.isDropdownOpen;
   }
 
    markTableAsNewlyCreated() {
@@ -1131,10 +1340,23 @@ class TableMenus {
 
   insertColumn(td: HTMLElement, offset: number) {
     try {
-      // Check if td is valid
-      if (!td || !td.isConnected) {
-        console.warn('Cannot insert column: td element is null, undefined, or disconnected');
+      // Validate td parameter
+      if (!td) {
+        console.warn('Cannot insert column: td parameter is null or undefined');
         return;
+      }
+
+      // Check if td is still connected to the DOM
+      if (!td.isConnected) {
+        // Try to reconnect the cell reference
+        const reconnectedTd = this.reconnectCellReference(td);
+        if (reconnectedTd) {
+          console.log('Reconnected td reference for column insertion');
+          td = reconnectedTd;
+        } else {
+          console.error('Cannot insert column: unable to reconnect td reference');
+          return;
+        }
       }
       
       // Safely get bounding client rect
@@ -1181,44 +1403,40 @@ class TableMenus {
       // Get the formats from the current cell to apply to new cells
       const cellFormats = getCellFormats(tdBlot);
       
+      // Track existing cells before insertion to identify newly created ones
+      const existingCells = new Set(Array.from(this.table?.querySelectorAll('td, th') || []));
+      
       // Insert the column
       tableBlot.insertColumn(position, isLast, width, offset);
       
       // Apply formats to newly inserted cells
       if (cellFormats && cellFormats[0]) {
-        const newCells : any = this.table?.querySelectorAll('td, th') || [];
+        const allCellsAfterInsertion = Array.from(this.table?.querySelectorAll('td, th') || []);
+        const newCells = allCellsAfterInsertion.filter(cell => !existingCells.has(cell));
+        
         newCells.forEach((cell: any) => {
-          const cellBlot : any = Quill.find(cell) as TableCell;
-          if (cellBlot && !cellBlot.domNode.isEqualNode(td)) {
-            try {
-              // Apply the formats from the source cell to the new cell
-              const [formats] = getCellFormats(cellBlot);
-              Object.keys(cellFormats[0]).forEach(key => {
-                if (key !== 'table' && key !== 'cell' && key !== 'row') {
-                  cellBlot.format(key, cellFormats[0][key]);
-                }
-              });
-            } catch (e) {
-              console.warn('Could not apply formats to new cell:', e);
+          const cellBlot: any = Quill.find(cell) as TableCell;
+          if (cellBlot) {
+            // Use applyFormatOnEmptyCell instead of direct format application
+            if (typeof window !== 'undefined' && (window as any).applyFormatOnEmptyCell) {
+              (window as any).applyFormatOnEmptyCell(cell, false);
             }
           }
         });
       }
       this.quill.scrollSelectionIntoView();
       
-      // After column insertion, ensure the cell is still selected and menu is updated
-      // Use setTimeout to allow DOM to update before updating menus
+      // After column insertion, just refresh the table selection state
+      // Don't try to re-select specific cells as DOM references may be stale
       setTimeout(() => {
         try {
-          // Verify the original cell is still connected
-          if (td && td.isConnected) {
-            // Re-select the original cell to maintain selection
-            this.tableBetter.cellSelection.setSelectedTds([td]);
-            // Update menu position based on the selected cell
-            this.updateMenus(this.table, td);
-          }
+          // Clear any existing cell selections and refresh table state
+          this.tableBetter.cellSelection.clearSelected();
+          
+          // Refresh cell selection to ensure we have valid references after the DOM mutation
+          this.refreshCellSelection();
         } catch (error) {
-          console.warn('Error updating selection after column insertion:', error);
+          console.warn('Error refreshing selection after column insertion:', error);
         }
       }, 50);
     } catch (error) {
@@ -1272,10 +1490,24 @@ class TableMenus {
 
   insertRow(td: HTMLElement, offset: number) {
     try {
-      // Check if td is valid
-      if (!td || !td.isConnected) {
-        console.warn('Cannot insert row: td element is null, undefined, or disconnected');
+      // Validate td parameter
+      if (!td) {
+        console.warn('Cannot insert row: td parameter is null or undefined');
         return;
+      }
+
+      // Check if td is still connected to the DOM
+      if (!td.isConnected) {
+        console.warn('Cannot insert row: td element is disconnected from DOM');
+        // Try to reconnect the cell reference
+        const reconnectedTd = this.reconnectCellReference(td);
+        if (reconnectedTd) {
+          console.log('Reconnected td reference for row insertion');
+          td = reconnectedTd;
+        } else {
+          console.error('Cannot insert row: unable to reconnect td reference');
+          return;
+        }
       }
       
       // Find the tdBlot
@@ -1310,6 +1542,9 @@ class TableMenus {
       // Get the formats from the current cell to apply to new cells
       const cellFormats = getCellFormats(tdBlot);
       
+      // Track existing cells before insertion to identify newly created ones
+      const existingCells = new Set(Array.from(this.table?.querySelectorAll('td, th') || []));
+      
       if (offset > 0) {
         // Safely get rowspan attribute
         let rowspan = 1;
@@ -1324,41 +1559,36 @@ class TableMenus {
         tableBlot.insertRow(index + offset, offset, isTh);
       }
       
-      // Apply formats to newly inserted cells in the row
+      // Apply formats ONLY to newly inserted cells in the row
       if (cellFormats && cellFormats[0]) {
-        const newCells: any = this.table?.querySelectorAll('td, th') || [];
+        const allCellsAfterInsertion = Array.from(this.table?.querySelectorAll('td, th') || []);
+        const newCells = allCellsAfterInsertion.filter(cell => !existingCells.has(cell));
+        
         newCells.forEach((cell: any) => {
           const cellBlot: any = Quill.find(cell) as TableCell;
-          if (cellBlot && !cellBlot.domNode.isEqualNode(td)) {
-            try {
-              // Apply the formats from the source cell to the new cell
-              Object.keys(cellFormats[0]).forEach(key => {
-                if (key !== 'table' && key !== 'cell' && key !== 'row' && key !== 'td' && key !== 'th' && key !== 'tr') {
-                  cellBlot.format(key, cellFormats[0][key]);
-                }
-              });
-            } catch (e) {
-              console.warn('Could not apply formats to new cell:', e);
+          if (cellBlot) {
+            // Use applyFormatOnEmptyCell instead of direct format application
+            if (typeof window !== 'undefined' && (window as any).applyFormatOnEmptyCell) {
+              (window as any).applyFormatOnEmptyCell(cell, false);
             }
           }
         });
       }
       
       this.quill.scrollSelectionIntoView();
-      // After row insertion, ensure the cell is still selected and menu is updated
-      // Use setTimeout to allow DOM to update before updating menus
+      
+      // After row insertion, refresh the cell selection to ensure we have valid references
+      // Use setTimeout to allow DOM to update before updating selection
       setTimeout(() => {
-      try {
-      // Verify the original cell is still connected
-      if (td && td.isConnected) {
-      // Re-select the original cell to maintain selection
-      this.tableBetter.cellSelection.setSelectedTds([td]);
-      // Update menu position based on the selected cell
-      this.updateMenus(this.table, td);
-      }
-      } catch (error) {
-      console.warn('Error updating selection after row insertion:', error);
-      }
+        try {
+          // Clear any existing cell selections and refresh table state
+          this.tableBetter.cellSelection.clearSelected();
+          
+          // Refresh cell selection to ensure we have valid references after the DOM mutation
+          this.refreshCellSelection();
+        } catch (error) {
+          console.warn('Error updating selection after row insertion:', error);
+        }
       }, 50);
     } catch (error) {
       console.error('Error inserting row:', error);
@@ -1457,20 +1687,14 @@ class TableMenus {
       const lastClickedCell = this.tableBetter.lastClickedCell;
       if (lastClickedCell && lastClickedCell.isConnected && 
           this.tableBetter.cellSelection.selectedTds.length === 0) {
-        // If we have a last clicked cell but no current selection, restore the selection
-        this.tableBetter.cellSelection.setSelectedTds([lastClickedCell]);
+        console.log('showMenus: iOS logic - restoring cell selection');
+        // REMOVED: setSelectedTds call that was causing race conditions
+        // The handleClick method already calls setSelectedTds, so this is redundant
       }
     }
     
-   // Update menu position based on selected cell
-    if (this.table && this.tableBetter.cellSelection.selectedTds.length > 0) {
-      const selectedCell = this.tableBetter.cellSelection.selectedTds[0];
-      if (selectedCell && selectedCell.isConnected) {
-        requestAnimationFrame(() => {
-          this.updateMenus(this.table, selectedCell as HTMLElement);
-        });
-      }
-    }
+    // REMOVED: Delayed updateMenus() call that may trigger DOM manipulations clearing selection
+    // The handleClick method already calls updateMenus(), so this is redundant and potentially harmful
   }
 
   splitCell() {
@@ -1541,30 +1765,29 @@ class TableMenus {
     const isShowing = list.classList.contains('ql-hidden');
     
     if (isShowing) {
-      // When showing dropdown, add a small delay to allow keyboard to close
-      // Also ensure the menu container is visible
-      this.showMenus(); // Make sure menu container is visible
+      this.quill.blur();
       
-      setTimeout(() => {
-        // Make sure menu container is still visible
-        this.showMenus();
-        
-        list.classList.remove('ql-hidden');
-        tooltip.classList.add('ql-table-tooltip-hidden');
-        this.prevList = list;
-        this.prevTooltip = tooltip;
-        
-        // After showing dropdown, update its position to account for any layout changes
-        if (this.table) {
-          this.updateMenus(this.table);
+      list.classList.remove('ql-hidden');
+      tooltip.classList.add('ql-table-tooltip-hidden');
+      this.prevList = list;
+      this.prevTooltip = tooltip;
+      this.isDropdownOpen = true;
+      
+      // Ensure cell selection is maintained
+      if (this.tableBetter.cellSelection.selectedTds.length > 0) {
+        const selectedCell = this.tableBetter.cellSelection.selectedTds[0];
+        if (selectedCell && selectedCell.isConnected) {
+          // Re-apply the focused class to ensure blue selection is visible
+          selectedCell.classList.add('ql-cell-focused');
         }
-      }, 300); // 300ms delay to allow keyboard to close
+      }
     } else {
-      // When hiding, do it immediately
+      // When hiding, restore focus to the previously selected cell
       list.classList.add('ql-hidden');
       tooltip.classList.remove('ql-table-tooltip-hidden');
       this.prevList = list;
       this.prevTooltip = tooltip;
+      this.isDropdownOpen = false;
     }
   }
 
@@ -1590,88 +1813,94 @@ class TableMenus {
 
   updateMenus(table: HTMLElement = this.table, clickedCell?: HTMLElement) {
     if (!table) return;
-    requestAnimationFrame(() => {
-      try {
-        this.root.classList.remove('ql-table-triangle-none');
-        const [tableBounds, containerBounds] = this.getCorrectBounds(table);
-        const { left, right, top, bottom } = tableBounds;
-        const { height, width } = this.root.getBoundingClientRect();
-        const toolbar = this.quill.getModule('toolbar');
-        // @ts-expect-error
-        const computedStyle = getComputedStyle(toolbar.container);
-        
-        // Use the clicked cell if provided, otherwise use selected cells
-        const cellToPosition = clickedCell || (this.tableBetter.cellSelection.selectedTds.length > 0 ? this.tableBetter.cellSelection.selectedTds[0] : null);
-        
-        let correctTop: number;
-        let correctLeft: number;
-        
-        // Check if we have a cell to position the menu relative to it
-        if (cellToPosition && cellToPosition.isConnected) {
-          const cellBounds = getCorrectBounds(cellToPosition as Element, this.quill.container);
-          
-          // Position the menu relative to the cell from the start
-          correctTop = cellBounds.top - height - 10;
-          correctLeft = (cellBounds.left + cellBounds.right - width) >> 1;
-          
-          // If the menu would be positioned above the viewport, place it below the cell
-          if (correctTop < 0) {
-            correctTop = cellBounds.bottom + 10;
-            this.root.classList.add('ql-table-triangle-down');
-            this.root.classList.remove('ql-table-triangle-up');
-          } else {
-            this.root.classList.add('ql-table-triangle-up');
-            this.root.classList.remove('ql-table-triangle-down');
-          }
-          
-          // Ensure menu doesn't go below the viewport
-          // If menu would be pushed off the bottom, place it above the cell instead
-          if (correctTop + height > containerBounds.height) {
-            correctTop = cellBounds.top - height - 10;
-            if (correctTop < 0) {
-              // If still doesn't fit above, place it at the top of the container
-              correctTop = 10;
-            }
-            this.root.classList.add('ql-table-triangle-up');
-            this.root.classList.remove('ql-table-triangle-down');
-          }
+
+    // Check if any dropdown list is currently visible
+    // If so, don't update menu position to avoid repositioning
+    const openDropdowns = this.root.querySelectorAll('.ql-table-dropdown-list:not(.ql-hidden)');
+    if (openDropdowns.length > 0) {
+      return;
+    }
+
+    try {
+      this.root.classList.remove('ql-table-triangle-none');
+      const [tableBounds, containerBounds] = this.getCorrectBounds(table);
+      const { left, right, top, bottom } = tableBounds;
+      const { height, width } = this.root.getBoundingClientRect();
+      const toolbar = this.quill.getModule('toolbar');
+      // @ts-expect-error
+      const computedStyle = getComputedStyle(toolbar.container);
+
+      // Use the clicked cell if provided, otherwise use selected cells
+      const cellToPosition = clickedCell || (this.tableBetter.cellSelection.selectedTds.length > 0 ? this.tableBetter.cellSelection.selectedTds[0] : null);
+
+      let correctTop: number;
+      let correctLeft: number;
+
+      // Check if we have a cell to position the menu relative to it
+      if (cellToPosition && cellToPosition.isConnected) {
+        const cellBounds = getCorrectBounds(cellToPosition as Element, this.quill.container);
+
+        // Position the menu relative to the cell from the start
+        correctTop = cellBounds.top - height - 10;
+        correctLeft = (cellBounds.left + cellBounds.right - width) >> 1;
+
+        // If the menu would be positioned above the viewport, place it below the cell
+        if (correctTop < 0) {
+          correctTop = cellBounds.bottom + 10;
+          this.root.classList.add('ql-table-triangle-down');
+          this.root.classList.remove('ql-table-triangle-up');
         } else {
-          // Fall back to table-based positioning if no cell is selected
-          correctTop = top - height - 10;
-          correctLeft = (left + right - width) >> 1;
-          
-          if (correctTop > -parseInt(computedStyle.paddingBottom)) {
-            this.root.classList.add('ql-table-triangle-up');
-            this.root.classList.remove('ql-table-triangle-down');
-          } else {
-            if (bottom > containerBounds.height) {
-              correctTop = containerBounds.height + 10;
-            } else {
-              correctTop = bottom + 10;
-            }
-            this.root.classList.add('ql-table-triangle-down');
-            this.root.classList.remove('ql-table-triangle-up');
+          this.root.classList.add('ql-table-triangle-up');
+          this.root.classList.remove('ql-table-triangle-down');
+        }
+
+        // Ensure menu doesn't go below the viewport
+        // If menu would be pushed off the bottom, place it above the cell instead
+        if (correctTop + height > containerBounds.height) {
+          correctTop = cellBounds.top - height - 10;
+          if (correctTop < 0) {
+            // If still doesn't fit above, place it at the top of the container
+            correctTop = 10;
           }
+          this.root.classList.add('ql-table-triangle-up');
+          this.root.classList.remove('ql-table-triangle-down');
         }
-        
-        // Ensure the menu stays within the container bounds
-        if (correctLeft < containerBounds.left) {
-          correctLeft = 0;
-          this.root.classList.add('ql-table-triangle-none');
-        } else if (correctLeft + width > containerBounds.right) {
-          correctLeft = containerBounds.right - width;
-          this.root.classList.add('ql-table-triangle-none');
+      } else {
+        // Fall back to table-based positioning if no cell is selected
+        correctTop = top - height - 10;
+        correctLeft = (left + right - width) >> 1;
+
+        if (correctTop > -parseInt(computedStyle.paddingBottom)) {
+          this.root.classList.add('ql-table-triangle-up');
+          this.root.classList.remove('ql-table-triangle-down');
+        } else {
+          if (bottom > containerBounds.height) {
+            correctTop = containerBounds.height + 10;
+          } else {
+            correctTop = bottom + 10;
+          }
+          this.root.classList.add('ql-table-triangle-down');
+          this.root.classList.remove('ql-table-triangle-up');
         }
-        
-        // Apply the position
-        setElementProperty(this.root, {
-          left: `${correctLeft}px`,
-          top: `${correctTop}px`
-        });
-      } catch (error) {
-        console.error('Error in updateMenus:', error);
       }
-     });
+
+      // Ensure the menu stays within the container bounds
+      if (correctLeft < containerBounds.left) {
+        correctLeft = 0;
+        this.root.classList.add('ql-table-triangle-none');
+      } else if (correctLeft + width > containerBounds.right) {
+        correctLeft = containerBounds.right - width;
+        this.root.classList.add('ql-table-triangle-none');
+      }
+
+      // Apply the position synchronously (no requestAnimationFrame to prevent DOM mutations)
+      setElementProperty(this.root, {
+        left: `${correctLeft}px`,
+        top: `${correctTop}px`
+      });
+    } catch (error) {
+      console.error('Error in updateMenus:', error);
+    }
   }
 
   updateScroll(scroll: boolean) {
@@ -1681,6 +1910,69 @@ class TableMenus {
   updateTable(table: HTMLElement) {
     this.table = table;
   }
+
+  reconnectCellReference(disconnectedTd: HTMLElement): HTMLElement | null {
+    if (!this.table || !disconnectedTd) {
+      return null;
+    }
+
+    try {
+      // Get all cells in the current table
+      const allCells = Array.from(this.table.querySelectorAll('td, th'));
+      
+      // Try to find a cell with the same data-row attribute first
+      const originalRowId = disconnectedTd.getAttribute('data-row');
+      if (originalRowId) {
+        const matchingRowCells = allCells.filter(cell => 
+          cell.getAttribute('data-row') === originalRowId && cell.isConnected
+        );
+        if (matchingRowCells.length > 0) {
+          return matchingRowCells[0] as HTMLElement;
+        }
+      }
+      
+      // For newly inserted cells that might not have data-row attributes yet,
+      // try to find a cell in the same approximate position
+      const disconnectedRect = disconnectedTd.getBoundingClientRect();
+      if (disconnectedRect.width > 0 && disconnectedRect.height > 0) {
+        let closestCell: HTMLElement | null = null;
+        let minDistance = Infinity;
+        
+        for (const cell of allCells) {
+          if (!cell.isConnected) continue;
+          
+          const cellRect = cell.getBoundingClientRect();
+          const distance = Math.sqrt(
+            Math.pow(cellRect.left - disconnectedRect.left, 2) + 
+            Math.pow(cellRect.top - disconnectedRect.top, 2)
+          );
+          
+          if (distance < minDistance) {
+            minDistance = distance;
+            closestCell = cell as HTMLElement;
+          }
+        }
+        
+        // Only use the closest cell if it's reasonably close (within 50px)
+        if (closestCell && minDistance < 50) {
+          return closestCell;
+        }
+      }
+      
+      // Final fallback: return any connected cell
+      const connectedCells = allCells.filter(cell => cell.isConnected);
+      if (connectedCells.length > 0) {
+        return connectedCells[0] as HTMLElement;
+      }
+      
+      return null;
+    } catch (error) {
+      console.warn('Error in reconnectCellReference:', error);
+      return null;
+    }
+  }
+
+
 }
 
 export default TableMenus;

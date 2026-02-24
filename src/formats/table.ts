@@ -729,10 +729,23 @@ class TableContainer extends Container {
     }
     
     const cell = this.scroll.create(cellBlotName, cellFormats) as TableCell;
-    const cellBlock = this.scroll.create(blockBlotName, cellId()) as TableCellBlock;
-    cell.appendChild(cellBlock);
+    
+    // Check if cell already has content to prevent duplicate ql-table-block elements
+    const existingBlocks = cell.children.reduce((count, child) => {
+      if (child.statics.blotName === blockBlotName) {
+        return count + 1;
+      }
+      return count;
+    }, 0);
+    
+    // Only append a block if the cell doesn't already have one
+    if (existingBlocks === 0) {
+      const cellBlock = this.scroll.create(blockBlotName, cellId()) as TableCellBlock;
+      cell.appendChild(cellBlock);
+      cellBlock.optimize();
+    }
+    
     row.insertBefore(cell, ref);
-    cellBlock.optimize();
     return cell;
   }
 
