@@ -116,7 +116,7 @@ class Table extends Module {
       const originalUpdate = toolbar.update;
       toolbar.update = (range: any) => {
         // Skip toolbar updates when we're setting up a table cell to prevent clearing ql-active classes
-        if (this.isSettingUpTableCell) {
+        if (window.isSettingUpTableCell) {
           console.log('🔍 SKIPPING toolbar update during table cell setup');
           return;
         }
@@ -632,6 +632,43 @@ updateToolbarUI(formats: any) {
   // Expose activeFormats for table menu toolbar updates
   getActiveFormats() {
     return this.activeFormats || {};
+  }
+
+  // Get text formatting from cell content (bold, italic, font, size, color, etc.)
+  getCellTextFormats(cell: any): any {
+    if (!cell) return {};
+    
+    try {
+      // Validate cell is a proper blot with length method
+      if (typeof cell.length !== 'function') {
+        console.log('🔍 getCellTextFormats: Cell is not a valid blot');
+        return {};
+      }
+      
+      const cellLength = cell.length();
+      console.log('🔍 getCellTextFormats: Cell length:', cellLength);
+      
+      // If cell has content (more than just the newline), get formats from first character
+      if (cellLength > 1) {
+        const cellIndex = this.quill.getIndex(cell);
+        console.log('🔍 getCellTextFormats: cellIndex:', cellIndex);
+        
+        if (cellIndex === null || cellIndex === undefined || cellIndex < 0) {
+          console.log('🔍 getCellTextFormats: Invalid cellIndex, returning empty formats');
+          return {};
+        }
+        
+        const formats = this.quill.getFormat(cellIndex, 1);
+        console.log('🔍 getCellTextFormats: Formats from getFormat:', formats);
+        return formats;
+      }
+      
+      console.log('🔍 getCellTextFormats: Cell is empty, returning empty formats');
+      return {};
+    } catch (e) {
+      console.error('🔍 getCellTextFormats: Error getting cell formats:', e);
+      return {};
+    }
   }
 
   safelyApplyFormats(cell: any, range: any, formats: any) {

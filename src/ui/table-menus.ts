@@ -54,6 +54,7 @@ import Table from '../quill-table-better';
 declare global {
   interface Window {
     isSettingUpTableCell?: boolean;
+    isProgrammaticallySettingSelection?: boolean;
   }
 }
 
@@ -336,6 +337,7 @@ class TableMenus {
   private currentTextChangeHandler: (() => void) | null = null;
   private cellBeforeDropdown: HTMLElement | null = null;
   private isDropdownOpen = false;
+  lastCellClickTime = 0;
   constructor(quill: Quill, tableBetter?: QuillTableBetter) {
     this.quill = quill;
     this.table = null;
@@ -1211,6 +1213,13 @@ class TableMenus {
     if (cell && !isMenuIconClick) {
       console.log(`🔍 HANDLECLICK: Cell clicked, starting selection process`);
 
+      // Call handlePreciseTextPositioning BEFORE stopping propagation
+      // This ensures precise cursor positioning happens before any event blocking
+      if (typeof window !== 'undefined' && (window as any).handlePreciseTextPositioning) {
+        console.log('🔍 HANDLECLICK: Calling handlePreciseTextPositioning for precise positioning');
+        (window as any).handlePreciseTextPositioning(e);
+      }
+
       // Prevent event bubbling to toolbar buttons
       e.stopPropagation();
 
@@ -1223,8 +1232,8 @@ class TableMenus {
         // Update the last clicked cell reference
         this.tableBetter.lastClickedCell = tdElement as HTMLElement;
         
-        // STEP 1: Set flag to prevent selection-change handler from overriding toolbar
-        window.isSettingUpTableCell = true;
+        // Track when cell was clicked for scroll prevention
+        this.lastCellClickTime = Date.now();
         
         // STEP 2: Show the table menu FIRST to prevent iOS from triggering duplicate selection calls
         // This ensures showMenus() doesn't try to restore selection when we already have it
@@ -1232,39 +1241,100 @@ class TableMenus {
         this.showMenus();
         
         // STEP 3: Set the cell selection (this will apply ql-cell-focused class)
-        // Use a simple, single call that doesn't interfere with subsequent operations
+        // Get the calculated cursor position from handlePreciseTextPositioning if available
+        const calculatedPosition = (window as any).lastCalculatedCursorPosition;
+        console.log('🔍 TABLE-MENUS: Calculated position from handlePreciseTextPositioning:', calculatedPosition);
+        
+        // Pass the calculated position to setSelectedTds so cursor appears at clicked location
         this.tableBetter.cellSelection.setSelectedTds([tdElement as HTMLElement]);
         
+        // Clear the stored position after using it
+        (window as any).lastCalculatedCursorPosition = undefined;
+        
         // STEP 4: Focus the editor AFTER all selection setup is complete
-        // NOTE: Don't override cursor position here - let handlePreciseTextPositioning handle it
         requestAnimationFrame(() => {
+          console.log('🔍 TABLE-MENUS: Calling quill.focus()');
           this.quill.focus();
         });
         
-        // STEP 5: Update toolbar UI to reflect current cell formatting
+        // STEP 5: Update toolbar with actual cell formats
         setTimeout(() => {
-          // Get the active formats being tracked by the table-better module
-          // These are the formats that have been applied to content in this cell
-          const tableBetter = this.tableBetter;
-          if (tableBetter && typeof tableBetter.getActiveFormats === 'function') {
-            const activeFormats = tableBetter.getActiveFormats();
-            this.tableBetter.updateToolbarUI(activeFormats);
+          const range = this.quill.getSelection();
+          if (!range || range.index === null || range.index === undefined) return;
+          
+          // Get the ACTUALLY CLICKED CELL (tdElement), not from getTable()[2]
+          const clickedCellBlot = Quill.find(tdElement) as any;
+          let formats: any = {};
+          
+          // STEP 1: Try to get formats from the clicked cell
+          if (clickedCellBlot) {
+            formats = this.tableBetter.getCellTextFormats(clickedCellBlot);
+            console.log("🔍 TABLE-MENUS: Formats from clicked cell:", formats);
           }
-        }, 10); // Reduced delay since we have the flag set
-        
-        // STEP 6: Clear the flag after toolbar update
+          
+          // STEP 2: If clicked cell is empty, search the table for any cell with formats
+          if (Object.keys(formats).length === 0) {
+            const cellLength = clickedCellBlot?.length?.() || 0;
+            if (cellLength <= 1) {
+              console.log("🔍 TABLE-MENUS: Clicked cell is empty, searching table for formatted cells...");
+              
+              // Get all cells in the table
+              const table = this.table;
+              if (table) {
+                const cells = table.querySelectorAll('td, th');
+                
+                // Search for the first cell with formats
+                for (const cell of cells) {
+                  const cellBlot = Quill.find(cell) as any;
+                  if (cellBlot) {
+                    const cellFormats = this.tableBetter.getCellTextFormats(cellBlot);
+                    if (Object.keys(cellFormats).length > 0) {
+                      formats = { ...cellFormats };
+                      console.log("🔍 TABLE-MENUS: Found formatted cell in table, using formats:", formats);
+                      break;
+                    }
+                  }
+                }
+              }
+            }
+          }
+          
+          // STEP 3: If still no formats found, check editor's current font and size
+          if (Object.keys(formats).length === 0) {
+            console.log("🔍 TABLE-MENUS: No table formats found, checking editor state...");
+            
+            const editorFormats = this.quill.getFormat(range.index);
+            console.log("🔍 TABLE-MENUS: Editor formats:", editorFormats);
+            
+            // Extract only font and size from editor
+            if (editorFormats.font) {
+              formats.font = editorFormats.font;
+              console.log("🔍 TABLE-MENUS: Applied editor font:", editorFormats.font);
+            }
+            if (editorFormats.size) {
+              formats.size = editorFormats.size;
+              console.log("🔍 TABLE-MENUS: Applied editor size:", editorFormats.size);
+            }
+            
+            // If editor has no font/size, use defaults
+            if (!formats.font && !formats.size) {
+              console.log("🔍 TABLE-MENUS: No editor formats, using defaults");
+              formats = editorFormats; // Use all editor formats as fallback
+            }
+          }
+          
+          // Filter out table metadata
+          delete formats['table-cell-block'];
+          delete formats['table-cell'];
+          
+          console.log('🔍 TABLE-MENUS: Final formats for toolbar:', formats);
+          this.tableBetter.updateToolbarUI(formats);
+        }, 150);
+
+        // STEP 6: Scroll cell into view (centered in viewport)
         setTimeout(() => {
-          window.isSettingUpTableCell = false;
+          tdElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }, 100);
-        
-        // STEP 7: Ensure the cell scrolls into view
-        if (typeof window !== 'undefined' && (window as any).adjustScrollForSelection) {
-          const editor = document.getElementById('editor');
-          const currentSelection = this.quill.getSelection();
-          if (editor && currentSelection) {
-            (window as any).adjustScrollForSelection(currentSelection.index, editor, this.quill);
-          }
-        }
         
       }
     } else if (isMenuIconClick && hasSelection) {
@@ -1302,23 +1372,22 @@ class TableMenus {
       }
     }
     
-    // Handle iOS keyboard visibility restoration - simplified to avoid interference
+    // Handle iOS keyboard visibility restoration - immediate approach for older iOS
     if (keyboardLikelyVisible && hasSelection && currentSelectedTds[0]?.isConnected) {
-      // Simple keyboard restoration: check if keyboard closes unexpectedly after cell selection
-      setTimeout(() => {
-        // Only restore if we still have a valid selection but keyboard might have closed
-        if (currentSelectedTds.length > 0 && currentSelectedTds[0]?.isConnected) {
-          const currentHeight = window.innerHeight;
-          const keyboardStillVisible = currentHeight < window.outerHeight * 0.85; // More conservative threshold
+      // Use version-aware keyboard restoration
+      if (typeof window !== 'undefined' && (window as any).shouldRestoreKeyboardOnCellSwitch) {
+        const shouldRestore = (window as any).shouldRestoreKeyboardOnCellSwitch();
+        if (shouldRestore) {
+          console.log('🔍 Older iOS detected - immediately restoring keyboard focus');
 
-          if (!keyboardStillVisible) {
-            // Keyboard might have closed - try to reopen it
-            requestAnimationFrame(() => {
-              this.quill.focus();
-            });
-          }
+          // Immediately restore focus for older iOS - no delay needed
+          // On older iOS, the keyboard doesn't automatically reopen when focus changes
+          requestAnimationFrame(() => {
+            console.log('🔍 Executing keyboard focus restoration');
+            this.quill.focus();
+          });
         }
-      }, 500); // Give keyboard time to appear naturally
+      }
     }
   }
 
@@ -1765,7 +1834,7 @@ class TableMenus {
     const isShowing = list.classList.contains('ql-hidden');
     
     if (isShowing) {
-      this.quill.blur();
+      // REMOVED: this.quill.blur() - This was clearing the selection!
       
       list.classList.remove('ql-hidden');
       tooltip.classList.add('ql-table-tooltip-hidden');

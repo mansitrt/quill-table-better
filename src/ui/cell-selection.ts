@@ -58,6 +58,8 @@ class CellSelection {
   singleList: Array<HTMLElement | Element>;
   tableBetter: QuillTableBetter;
   classObserver: MutationObserver | null;
+  lastPreciseCursorPosition: number; // Store the last precise cursor position set
+
   constructor(quill: Quill, tableBetter: QuillTableBetter) {
     this.quill = quill;
     this.selectedTds = [];
@@ -67,6 +69,7 @@ class CellSelection {
     this.singleList = [];
     this.tableBetter = tableBetter;
     this.classObserver = null;
+    this.lastPreciseCursorPosition = 0; // Initialize last precise position to 0
     this.quill.root.addEventListener('click', this.handleClick.bind(this));
     this.initDocumentListener();
     this.initWhiteList();

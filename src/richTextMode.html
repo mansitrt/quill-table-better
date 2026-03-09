@@ -125,12 +125,12 @@
     background-color: rgba(255, 235, 59, 0.5) !important;
   }
 
-  /* .ql-operate-line-container,
+  .ql-operate-line-container,
   .ql-operate-block,
   .ql-operate-drag-table {
     display: none !important;
     pointer-events: none !important;
-  } */
+  }
 </style>
 
 <!-- Include Quill stylesheet -->
@@ -285,6 +285,8 @@
 <script>
   var placeHolderLanguage = 'Enter note content here';
   var keyboardHeight = 0;
+  // Add this at the top with other global variables
+  let scrollInProgress = false;
   var isTabToEdit = null;
   var isPlanNote = false;
   var isKeyboardOperation = false;
@@ -293,13 +295,6 @@
     "font": "",
     "size": ""
 };
-  // Expose userDeselectedFormats globally so quill-table-better.ts can access it
-  window.userDeselectedFormats = {};
-  const userDeselectedFormats = window.userDeselectedFormats;
-  // Track if we're currently in a table cell
- let isInTableCell = false;
-
-
   let lastFormats = {};
   let deviceType = '';
   let cursorIndex;
@@ -566,7 +561,7 @@ class FindAndReplace {
         e.preventDefault();
         this.open();
       }
-      // Escape to close
+      // Escape to close 
       if (e.key === 'Escape' && this.panel.style.display === 'block') {
         this.close();
       }
@@ -835,36 +830,42 @@ Quill.register('modules/findAndReplace', FindAndReplace);
 
   document
     .querySelector('#insert-table').addEventListener('click', function () {
-      setTimeout(() => {
-      const focusContainer = document.querySelector('.ql-editor');
-        if (focusContainer) focusContainer.focus();
-        // Center cursor after picker selection
-        const selection = snow.getSelection();
-        if (selection) {
-         scrollToCursorPosition({ index: selection.index }, { centerCursor: true, forceScroll: true });
-        }
-      }, 100); // A brief timeout seems necessary to let picker close first
       table.insertTable(2, 2);
       setTimeout(() => {
-        const tables = document.querySelectorAll('.ql-editor table');
-        if (tables.length) {
-          const lastTable = tables[tables.length - 1];
-          if (lastTable) {
-            const cells = lastTable.querySelectorAll('td');
-            // Get the first cell's blot for cursor positioning
-            const firstCellBlot = Quill.find(cells[0]);
-            const firstCellIndex = firstCellBlot ? snow.getIndex(firstCellBlot) : null;
-            // Apply formats to all cells
-            cells.forEach((cell, index) => {
-              applyFormatOnEmptyCell(cell, index === 0);
-            });
-
-            // Set cursor to first cell
-            if (firstCellIndex !== null) {
-              snow.setSelection(firstCellIndex, 0);
-            }
-          }
-        }
+        const selection = snow.getSelection();
+        if (!selection) return;
+        
+        const tableInfo = table.getTable(selection);
+        const newTable = tableInfo[0];
+        if (!newTable) return;
+        
+        const cells = newTable.domNode.querySelectorAll('td');
+        const firstCell = cells[0];
+        const firstCellBlot = Quill.find(firstCell);
+        const firstCellIndex = firstCellBlot ? snow.getIndex(firstCellBlot) : null;
+        
+        if (firstCellIndex === null) return;
+        
+        // Apply formats to all cells
+        cells.forEach((cell, index) => {
+          applyFormatOnEmptyCell(cell, index === 0);
+        });
+        
+        // Set selection
+        snow.setSelection(firstCellIndex, 0, Quill.sources.SILENT);
+        
+        // Scroll to center and focus
+        setTimeout(() => {
+          firstCell.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          snow.focus();
+          
+          // Update toolbar with editor formats
+          const formats = snow.getFormat(firstCellIndex);
+          const toolbarFormats = {};
+          if (formats.font) toolbarFormats.font = formats.font;
+          if (formats.size) toolbarFormats.size = formats.size;
+          if (typeof updateToolbarUI === 'function') updateToolbarUI(toolbarFormats);
+        }, 50);
       }, 50);
     });
 
@@ -898,37 +899,226 @@ Quill.register('modules/findAndReplace', FindAndReplace);
 
   let lastFormat = {}; // Store the last format applied
   let currentFormat = {};
-  snow.on('selection-change', function (range) {
+    snow.on('selection-change', function (range) {
+
+    if (window.preventToolbarReposition) return;
+
+    // CRITICAL: Skip entire handler when setting up table cell
+    // This prevents interference with cell selection setup
+    if (window.isSettingUpTableCell) {
+      console.log('🔍 SELECTION-CHANGE: Skipping entire handler - isSettingUpTableCell = true');
+      return;
+    }
+
+    // FIX: Prevent menu hiding when a dropdown is open
+    // When a dropdown is being interacted with, don't hide the menus
+    if (window.isDropdownOpen) {
+      console.log('🔍 SKIPPING selection-change handler - dropdown is open');
+      return;
+    }
+
+    // CRITICAL FIX: Prevent recursive selection-change events when restoring table cell selection
+    // When we call snow.setSelection() to restore, it triggers another selection-change event
+    // We need to skip processing on that recursive event
+    if (window.isRestoringTableCellSelection) {
+      console.log('🔍 SELECTION-CHANGE: Skipping - already restoring table cell selection');
+      return;
+    }
+
+    // Get table module once at the start
+    const tableModule = snow.getModule('table-better');
+    const hasSelectedCells = tableModule && tableModule.cellSelection && tableModule.cellSelection.selectedTds && tableModule.cellSelection.selectedTds.length > 0;
+
     // applyStylesToListElements(snow);
     // Get the current format at the selection index
-    if (range) {
-      const currentFormats = snow.getFormat(range);
-      lastSelectedFormats = currentFormats || {};
-      lastKnownRange = range;
+    if (range && range.index !== null && range.index !== undefined) {
+     lastKnownRange = range;
+      
+      // Get format at the current cursor position
       const format = snow.getFormat(range.index);
       lastFormat = format;
       window.lastUsedFormat = format;
+      lastSelectedFormats = format || {};
+
+      // Update toolbar with the format
       updateToolbarUI(format);
 
+      // Get all formats in the selection range
       const formats = snow.getFormat(range.index, range.length);
       if (Object.keys(formats).length > 0) {
         lastUsedFormats = { ...formats };
       }
+
+    } 
+    else if (range && (range.index === null || range.index === undefined)) {
+      console.log('🔍 SELECTION-CHANGE: Range exists but index is null/undefined - skipping format update');
+      // Don't call getFormat with null index - this causes the "index = null" log
+    } else {
+      // Track event count if setting up table cell
+      if (window.isSettingUpTableCell) {
+        window.selectionChangeEventCount = (window.selectionChangeEventCount || 0) + 1;
+        console.log('🔍 SELECTION-CHANGE: Setting up table cell (null range) - event count:', window.selectionChangeEventCount);
+        return; // Skip restoration during setup
+      }
+
+      // Check if we have selected cells
+      if (hasSelectedCells) {
+        console.log('🔍 SELECTION-CHANGE: ✅ We have selected table cells');
+        
+        // Update toolbar with active formats when null range occurs in table cell
+        // This prevents toolbar from being cleared when focus() is called
+        const activeFormats = tableModule?.getActiveFormats?.() || {};
+        // Only update toolbar if we have active formats
+        // If activeFormats is empty, don't call updateToolbarUI - it will clear the toolbar
+        if (Object.keys(activeFormats).length > 0) {
+          updateToolbarUI(activeFormats);
+          console.log('🔍 SELECTION-CHANGE: Updated toolbar with active formats');
+        } else {
+          console.log('🔍 SELECTION-CHANGE: No active formats - preserving current toolbar state');
+        }
+        
+        // Restore the selection to the saved cursor position
+        // Use lastPreciseCursorPosition which is set in setSelectedTds()
+        const savedPosition = tableModule?.cellSelection?.lastPreciseCursorPosition;
+        console.log('🔍 SELECTION-CHANGE: Saved cursor position from setSelectedTds:', savedPosition);
+        
+        // Only restore position if it's valid (not null, not undefined, and >= 0)
+        if (savedPosition !== undefined && savedPosition !== null && savedPosition >= 0) {
+          // Restore selection to the saved position
+          console.log('🔍 SELECTION-CHANGE: Restoring selection to saved position:', savedPosition);
+          window.isRestoringTableCellSelection = true;
+          snow.setSelection(savedPosition, 0, Quill.sources.SILENT);
+          setTimeout(() => {
+            window.isRestoringTableCellSelection = false;
+          }, 10);
+        
+        } else {
+          // No saved position - don't try to restore
+          console.log('🔍 SELECTION-CHANGE: No saved cursor position, skipping restoration');
+        }
+      } else {
+        // No selected cells - don't do anything
+        console.log('🔍 SELECTION-CHANGE: ❌ No selected cells - skipping null range handler');
+      } 
     }
-    else {
-      document.activeElement.blur();
-    }
+  
   });
 
 
- snow.on('text-change', function (delta, source) {
-    // Use the new function for Enter key processing
-    // formatEmptyLinesAfterEnter(delta, snow, lastSelectedFormats);
-    sendContentToNativeApp();
-    //applyStylesToListElements(snow);
-    // Get the current format at the selection index
-    const currentFormats = snow.getFormat();
+
+  // Consolidated unified text-change handler
+  snow.on('text-change', function (delta, oldDelta, source) {
+
+    // Only process user-initiated changes
+    if (source !== 'user') {
+      // Skip processing non-user changes but continue to end for content sync
+      return;
+    }
+
+    // Handle zero-width space cleanup (from the second handler)
+    // Check if delta contains any inserts (typing)
+    if (delta.ops && delta.ops.some(op => op.insert)) {
+      const range = snow.getSelection();
+      if (!range) {
+        return;
+      }
+
+      // Get the current line
+      const [line] = snow.getLine(range.index);
+      if (!line || !line.domNode) {
+        return;
+      }
+
+      // Check if this line contains a zero-width space character
+      const text = line.domNode.textContent;
+
+      // Only process if there's actual text along with the zero-width space
+      // This ensures we don't remove the zero-width space on empty lines
+      if (text && text.includes('\u200B') && text.replace(/\u200B/g, '').trim().length > 0) {
+        // Get the current formats before modifying anything
+        const currentFormats = snow.getFormat(range);
+
+        // Find the text node containing the zero-width space
+        function findAndFixZeroWidthSpace(node) {
+          if (node.nodeType === 3 && node.textContent.includes('\u200B')) {
+            // Save the selection and cursor position
+            const savedRange = snow.getSelection();
+            const savedOffset = window.getSelection().focusOffset;
+
+            // Only remove the zero-width space if there's other content
+            if (node.textContent.replace(/\u200B/g, '').trim().length > 0) {
+              // Remove the zero-width space
+              const newText = node.textContent.replace(/\u200B/g, '');
+              const removedChars = node.textContent.length - newText.length;
+              node.textContent = newText;
+
+              // Restore the selection with adjusted offset
+              if (savedRange) {
+                setTimeout(() => {
+                  // Adjust the offset if the cursor was after the zero-width space
+                  if (savedOffset > removedChars) {
+                    savedRange.index -= removedChars;
+                  }
+                  snow.setSelection(savedRange);
+
+                  // Re-apply the formats to ensure they're preserved
+                  if (currentFormats && Object.keys(currentFormats).length > 0) {
+                    // Apply each format individually
+                    Object.keys(currentFormats).forEach(format => {
+                      if (currentFormats[format] !== null && currentFormats[format] !== undefined) {
+                        snow.format(format, currentFormats[format], Quill.sources.SILENT);
+                      }
+                    });
+                  }
+                }, 0);
+              }
+              return true;
+            }
+          }
+
+          if (node.childNodes) {
+            for (let i = 0; i < node.childNodes.length; i++) {
+              if (findAndFixZeroWidthSpace(node.childNodes[i])) {
+                return true;
+              }
+            }
+          }
+
+          return false;
+        }
+
+        findAndFixZeroWidthSpace(line.domNode);
+      }
+
+      // // Flag management during typing
+      // const currentRange = snow.getSelection();
+      // if (currentRange) {
+      //   // Ensure flag stays set while actively typing in table cells
+      //   const [table] = snow.getModule('table-better')?.getTable(currentRange) || [];
+      //   if (table) {
+      //     window.isActivelyCellEditing = true;
+      //   } else {
+      //     // User is typing outside table, reset flag
+      //     window.isActivelyCellEditing = false;
+      //   }
+      // }
+
+      // Handle deselected formats only for the newly inserted text
       // Get the toolbar module to access userDeselectedFormats
+      const toolbar = snow.getModule('toolbar');
+      const userDeselectedFormats = toolbar?.userDeselectedFormats || {};
+
+      Object.keys(userDeselectedFormats).forEach(format => {
+        if (userDeselectedFormats[format]) {
+          // Only apply to the current cursor position/selection
+          // This ensures we don't affect previously formatted text
+          snow.format(format, false);
+        }
+      });
+    }
+
+    // Update lastSelectedFormats (from the original first handler)
+    const currentFormats = snow.getFormat();
     const toolbar = snow.getModule('toolbar');
   
     // Update lastSelectedFormats but respect user deselections
@@ -949,34 +1139,26 @@ Quill.register('modules/findAndReplace', FindAndReplace);
       lastSelectedFormats = { ...lastSelectedFormats, ...currentFormats };
     }
 
-
     const range = snow.getSelection();
     if (range) {
       const formats = snow.getFormat(range.index);
-      // If user is typing in a new empty block, reapply last format
-      // if (Object.keys(format).length === 0 && Object.keys(lastFormat).length > 0) {
-      //   snow.formatText(range.index, 1, lastFormat);
-      // }
       updateToolbarUI(lastSelectedFormats);
-
-      // Update button states based on selection format
-      // const boldBtn = document.querySelector('.ql-bold');
-      // if (boldBtn) boldBtn.classList.toggle('ql-active', formats.bold === true);
-
-      // const italicBtn = document.querySelector('.ql-italic');
-      // if (italicBtn) italicBtn.classList.toggle('ql-active', formats.italic === true);
-
-      // const underlineBtn = document.querySelector('.ql-underline');
-      // if (underlineBtn) underlineBtn.classList.toggle('ql-active', formats.underline === true);
-
-      // const strikeBtn = document.querySelector('.ql-strike');
-      // if (strikeBtn) strikeBtn.classList.toggle('ql-active', formats.strike === true);
     }
+
+    // Send content to native app (always called at the end)
+    sendContentToNativeApp();
   });
 
 
 
   snow.root.addEventListener('click', function (event) {
+    // Skip if clicked on a table cell - let table-menus.ts handle it exclusively
+    const clickedCell = event.target.closest('td, th');
+    if (clickedCell) {
+      console.log('Click event: Ignoring table cell click, handled by table-menus.ts');
+      return;
+    }
+
     const selection = snow.getSelection();
     if (!selection) return;
     setTimeout(() => {
@@ -986,6 +1168,13 @@ Quill.register('modules/findAndReplace', FindAndReplace);
     
     // Add touchend event which is more reliable on iOS
     snow.root.addEventListener('touchend', function (event) {
+      // Skip if we're in a table cell - let table-menus.ts handle it exclusively
+      const cell = event.target.closest('td, th');
+      if (cell) {
+        console.log('🔍 touchend: Skipping handleEmptyLineClick for table cell');
+        return;
+      }
+
       // Prevent default to avoid any iOS quirks
       //  event.preventDefault();
       
@@ -1118,23 +1307,28 @@ Quill.register('modules/findAndReplace', FindAndReplace);
        }
 
     // Update font picker
-    if (formats.font) {
-      const fontValue = document.querySelector('.ql-font .ql-picker-label');
-      if (fontValue) {
+    const fontValue = document.querySelector('.ql-font .ql-picker-label');
+    if (fontValue) {
+      if (formats.font) {
         fontValue.setAttribute('data-value', formats.font);
         fontValue.setAttribute('aria-label', formats.font);
         fontValue.classList.add('ql-active');
+        console.log(`Setting font to ${formats.font}`);
+      } else {
+        fontValue.classList.remove('ql-active');
       }
     }
 
     // Update size picker
-    if (formats.size) {
-
-      const sizeValue = document.querySelector('.ql-size .ql-picker-label');
-      if (sizeValue) {
+    const sizeValue = document.querySelector('.ql-size .ql-picker-label');
+    if (sizeValue) {
+      if (formats.size) {
         sizeValue.setAttribute('data-value', `${formats.size}`);
         sizeValue.setAttribute('aria-label', `${formats.size}s`);
         sizeValue.classList.add('ql-active');
+        console.log(`Setting size to ${formats.size}`);
+      } else {
+        sizeValue.classList.remove('ql-active');
       }
     }
 
@@ -1237,7 +1431,6 @@ Quill.register('modules/findAndReplace', FindAndReplace);
       selectedSizeItem.classList.add("ql-selected");
       sizePickerLabel.classList.add("ql-active");
       sizePicker.classList.remove("ql-expanded");
-      // **Fix: Temporarily blur and refocus the editor**
       snow.blur(); // Blur first
       snow.focus(); // Refocus after ensuring blur has applied
       snow.setSelection(index, length); // Restore selection
@@ -1736,10 +1929,12 @@ Quill.register('modules/findAndReplace', FindAndReplace);
   function applyFormatOnEmptyCell(cell, isFirstCell = false) {
     if (!cell) return;
 
-    snow.focus();
-
     const range = snow.getSelection();
-    if (!range) return;
+    if (!range) {
+      // Focus only if no selection exists
+      snow.focus();
+      return;
+    }
 
     // Get the current formats from the cell
     const blot = Quill.find(cell);
@@ -1806,7 +2001,9 @@ Quill.register('modules/findAndReplace', FindAndReplace);
   }
 
 
-
+  // Make the function globally accessible
+  window.applyFormatOnEmptyCell = applyFormatOnEmptyCell;
+  
 // 🎯 Save cursor position before picker opens
   function saveCursorPosition() {
     // First try to get direct selection
@@ -1890,6 +2087,7 @@ Quill.register('modules/findAndReplace', FindAndReplace);
         setTimeout(() => {
           if (cursorIndex !== null) {
           // Force selection update first
+          console.log('[handlePicker] Calling setSelection for cursorIndex:', cursorIndex);
           quillInstance.setSelection(cursorIndex, 0, Quill.sources.USER);
                  
           // Then center in viewport with higher priority
@@ -2007,7 +2205,6 @@ Quill.register('modules/findAndReplace', FindAndReplace);
   }
 
   function handleBackspace(picker, type, quill) {
-    if(!picker) return;
     const range = quill.getSelection(); // Get the current selection in Quill
     let [currentLine, offset] = quill.getLine(range.index);
     let [prevLine] = quill.getLine(range.index - 1);
@@ -2095,9 +2292,17 @@ Quill.register('modules/findAndReplace', FindAndReplace);
     }
     else if (event.key === "Enter") {
       isKeyboardOperation = true;
-      // Allow Enter key to work normally
+      // Handle Enter key to update toolbar immediately with preserved formatting
       setTimeout(() => {
-        isKeyboardOperation = false;
+        // Get the current selection
+        const range = snow.getSelection();
+        if (range) {
+          // Get the current formats at cursor position
+          const formats = snow.getFormat(range.index, range.length);
+          // Update the toolbar with these formats
+          updateToolbarUI(formats);
+          isKeyboardOperation = false;
+        }
       }, 50);
     }
   }, { capture: true, passive: false });
@@ -2176,6 +2381,114 @@ Quill.register('modules/findAndReplace', FindAndReplace);
   window.visualViewport.addEventListener('resize', adjustForKeyboard);
   window.addEventListener('orientationchange', adjustForKeyboard); // Handle device rotation
 
+  // iOS version detection and keyboard state management
+  // let keyboardIsVisible = false;
+  // let lastKeyboardHeight = 0;
+
+  // function getIOSVersion() {
+  //   const userAgent = navigator.userAgent;
+  //   const match = userAgent.match(/OS (\d+)_(\d+)/);
+  //   if (match) {
+  //     const majorVersion = parseInt(match[1], 10);
+  //     const minorVersion = parseInt(match[2], 10);
+  //     return { major: majorVersion, minor: minorVersion, version: majorVersion + minorVersion / 10 };
+  //   }
+  //   return null;
+  // }
+
+  // function isIOS() {
+  //   return /iPad|iPhone|iPod/.test(navigator.userAgent);
+  // }
+
+  // function isOlderIOS() {
+  //   const iosVersion = getIOSVersion();
+  //   return iosVersion && iosVersion.version < 26.3;
+  // }
+
+  // function updateKeyboardState() {
+  //   if (window.visualViewport) {
+  //     const currentHeight = window.visualViewport.height;
+  //     const windowHeight = window.innerHeight;
+  //     const keyboardHeight = windowHeight - currentHeight;
+
+  //     const wasKeyboardVisible = keyboardIsVisible;
+  //     const keyboardDetected = keyboardHeight > 150;
+
+  //     if (keyboardDetected) {
+  //       // Keyboard is visible
+  //       if (!keyboardIsVisible) {
+  //         keyboardIsVisible = true;
+  //         lastKeyboardHeight = keyboardHeight;
+  //         console.log('🔍 Keyboard became visible', {
+  //           height: currentHeight,
+  //           windowHeight,
+  //           keyboardHeight,
+  //           timestamp: Date.now()
+  //         });
+  //       }
+  //     } else {
+  //       // Keyboard is hidden
+  //       if (keyboardIsVisible) {
+  //         keyboardIsVisible = false;
+  //         lastKeyboardHeight = 0;
+  //         console.log('🔍 Keyboard became hidden', {
+  //           height: currentHeight,
+  //           windowHeight,
+  //           keyboardHeight: 0,
+  //           timestamp: Date.now(),
+  //           wasVisibleFor: keyboardIsVisible ? 'was visible before' : 'was already hidden'
+  //         });
+  //       }
+  //     }
+
+  //     // Log keyboard state changes for debugging
+  //     if (wasKeyboardVisible !== keyboardIsVisible) {
+  //       console.log('🔍 Keyboard state change detected:', {
+  //         from: wasKeyboardVisible ? 'visible' : 'hidden',
+  //         to: keyboardIsVisible ? 'visible' : 'hidden',
+  //         viewportHeight: currentHeight,
+  //         keyboardHeight: keyboardDetected ? keyboardHeight : 0
+  //       });
+  //     }
+  //   }
+  // }
+
+  // function shouldRestoreKeyboardOnCellSwitch() {
+  //   // Check if we're on iOS and running older version
+  //   if (!isIOS() || !isOlderIOS()) {
+  //     return false;
+  //   }
+
+  //   // Directly check current viewport height to determine if keyboard should be restored
+  //   // Instead of relying on the keyboardIsVisible flag which may be stale
+  //   if (window.visualViewport) {
+  //     const currentHeight = window.visualViewport.height;
+  //     const windowHeight = window.innerHeight;
+  //     const keyboardHeight = windowHeight - currentHeight;
+
+  //     // If keyboard height suggests keyboard is present, we should restore it
+  //     const keyboardPresent = keyboardHeight > 150;
+
+  //     console.log('🔍 shouldRestoreKeyboardOnCellSwitch:', {
+  //       currentHeight,
+  //       windowHeight,
+  //       keyboardHeight,
+  //       keyboardPresent,
+  //       isOlderIOS: isOlderIOS()
+  //     });
+
+  //     return keyboardPresent;
+  //   }
+
+  //   // Fallback for older browsers without visualViewport
+  //   return keyboardIsVisible;
+  // }
+
+  // // Update keyboard state on viewport resize
+  // if (window.visualViewport) {
+  //   window.visualViewport.addEventListener('resize', updateKeyboardState);
+  // }
+
   $("#btnscrollToBottom").click(function () {
     const $editable = $('.ql-editor');
     const height = $editable[0].scrollHeight;
@@ -2208,9 +2521,8 @@ Quill.register('modules/findAndReplace', FindAndReplace);
   function getTextOfRichTextEditorEdit() {
     snow.enable(true);
     const editor = document.querySelector('.ql-editor');
-    // Don't auto-focus on load - only focus when user explicitly interacts
-    // editor.focus();
-    // editor.click();
+    editor.focus();
+    editor.click();
     const root = snow.root;
     const selectionPosition = Math.round(root.scrollTop / (root.scrollHeight - root.clientHeight) * snow.getLength());
     snow.setSelection(selectionPosition || 0);
@@ -2258,6 +2570,10 @@ Quill.register('modules/findAndReplace', FindAndReplace);
     const currentSelection = snow.getSelection();
     const isFocused = document.activeElement === snow.container;
 
+    // DON'T BLUR THE EDITOR - let it stay focused for keyboard continuity
+    if (isFocused) {
+      snow.blur();
+    }
     // Find the font dropdown in the toolbar
     const fontDropdown = document.querySelector('.ql-font .ql-picker-options');
     if (fontDropdown) {
@@ -2359,6 +2675,10 @@ Quill.register('modules/findAndReplace', FindAndReplace);
     `;
     console.log(`Updated list styling - Size: ${fontSize}`);
 
+    // DON'T BLUR THE EDITOR - let it stay focused for keyboard continuity
+    setTimeout(() => {
+      snow.blur(); // Explicitly remove focus
+    }, 0)
   }
 
 
@@ -2420,6 +2740,16 @@ Quill.register('modules/findAndReplace', FindAndReplace);
 
     // Utility function for handling empty line click formatting
     function handleEmptyLineClick(quill, index) {
+      // Skip if we're in a table cell - let table-menus.ts handle cell interactions exclusively
+      const tableModule = quill.getModule('table-better');
+      if (tableModule) {
+        const [table, , cell] = tableModule.getTable();
+        if (cell) {
+          console.log('🔍 handleEmptyLineClick: Skipping for table cell, handled by table-menus.ts');
+          return;
+        }
+      }
+
       const range = quill.getSelection();
       if (!range) return;
 
@@ -2920,81 +3250,6 @@ Quill.register('modules/findAndReplace', FindAndReplace);
     }
   }
 
-   // Fix cursor overlapping issue when typing on empty lines
-  snow.on('text-change', function (delta, oldDelta, source) {
-    if (source !== 'user') return;
-
-    // Check if delta contains any inserts (typing)
-    if (delta.ops && delta.ops.some(op => op.insert)) {
-      const range = snow.getSelection();
-      if (!range) return;
-
-      // Get the current line
-      const [line] = snow.getLine(range.index);
-      if (!line || !line.domNode) return;
-
-      // Check if this line contains a zero-width space character
-      const text = line.domNode.textContent;
-
-      // Only process if there's actual text along with the zero-width space
-      // This ensures we don't remove the zero-width space on empty lines
-      if (text && text.includes('\u200B') && text.replace(/\u200B/g, '').trim().length > 0) {
-        // Get the current formats before modifying anything
-        const currentFormats = snow.getFormat(range);
-
-        // Find the text node containing the zero-width space
-        function findAndFixZeroWidthSpace(node) {
-          if (node.nodeType === 3 && node.textContent.includes('\u200B')) {
-            // Save the selection and cursor position
-            const savedRange = snow.getSelection();
-            const savedOffset = window.getSelection().focusOffset;
-
-            // Only remove the zero-width space if there's other content
-            if (node.textContent.replace(/\u200B/g, '').trim().length > 0) {
-              // Remove the zero-width space
-              const newText = node.textContent.replace(/\u200B/g, '');
-              const removedChars = node.textContent.length - newText.length;
-              node.textContent = newText;
-
-              // Restore the selection with adjusted offset
-              if (savedRange) {
-                setTimeout(() => {
-                  // Adjust the offset if the cursor was after the zero-width space
-                  if (savedOffset > removedChars) {
-                    savedRange.index -= removedChars;
-                  }
-                  snow.setSelection(savedRange);
-
-                  // Re-apply the formats to ensure they're preserved
-                  if (currentFormats && Object.keys(currentFormats).length > 0) {
-                    // Apply each format individually
-                    Object.keys(currentFormats).forEach(format => {
-                      if (currentFormats[format] !== null && currentFormats[format] !== undefined) {
-                        snow.format(format, currentFormats[format], Quill.sources.SILENT);
-                      }
-                    });
-                  }
-                }, 0);
-              }
-              return true;
-            }
-          }
-
-          if (node.childNodes) {
-            for (let i = 0; i < node.childNodes.length; i++) {
-              if (findAndFixZeroWidthSpace(node.childNodes[i])) {
-                return true;
-              }
-            }
-          }
-
-          return false;
-        }
-
-        findAndFixZeroWidthSpace(line.domNode);
-      }
-    }
-  });
 
 
   function filterOutTableFormats(formats) {
@@ -3011,8 +3266,9 @@ Quill.register('modules/findAndReplace', FindAndReplace);
 
   // Add a new function to update toolbar based on cell selection
   function updateToolbarFromCell(e) {
+
     // Only process if we clicked on a table cell
-    const cell = e.target.closest('td');
+    const cell = window.lastClickedCell || e.target.closest('td');
     if (!cell) return;
 
     // Get the cell's formats without modifying anything
@@ -3021,17 +3277,7 @@ Quill.register('modules/findAndReplace', FindAndReplace);
 
     // Get the formats from the cell
     const cellIndex = snow.getIndex(cellBlot);
-    let cellFormats = snow.getFormat(cellIndex, 1);
-
-    // Check if cell is empty
-    const cellText = cell.textContent.trim();
-    const isEmpty = cellText === '' || cellText === '\u200B'; // Zero-width space
-
-    // If cell is empty, apply last used formatting
-    if (isEmpty && lastSelectedFormats) {
-      cellFormats = { ...lastSelectedFormats, ...cellFormats };
-      console.log("Empty cell - applying last used formats:", cellFormats);
-    }
+    const cellFormats = snow.getFormat(cellIndex, 1);
 
     console.log("Cell formats detected:", cellFormats);
 
@@ -3115,108 +3361,33 @@ Quill.register('modules/findAndReplace', FindAndReplace);
         bgLabel.style.fill = cellFormats.background;
       }
     }
+
+    // Stop propagation to prevent other handlers from interfering
+    // e.stopPropagation(); // Commented out to allow focus events to propagate
   }
 
-  // Add event listeners with high priority (capture: true)
-  // This ensures our handler runs first, before other handlers
-  editor.addEventListener('click', function(e) {
-    const cell = e.target.closest('td');
-    if (cell) {
-      // Don't stop propagation - let normal click handling occur
-      // This ensures keyboard opens and cursor appears
-      
-      // Remove focus and conflicting selection classes from ALL cells
-      document.querySelectorAll('td').forEach(c => {
-        c.classList.remove('ql-cell-focused');
-        c.classList.remove('ql-cell-selected');
-        c.classList.remove('ql-cell-selected-after');
-      });
-      
-      // Add focus class ONLY to clicked cell
-      cell.classList.add('ql-cell-focused');
-      console.log('Cell focused:', cell);
-      
-      // Mark that we're in a table cell
-      isInTableCell = true;
-      
-      // Ensure cursor positioning inside cell after Quill processes the click
-      setTimeout(() => {
-        const cellBlot = Quill.find(cell);
-        if (cellBlot) {
-          const cellIndex = snow.getIndex(cellBlot);
-          // Set cursor to beginning of cell content
-          snow.setSelection(cellIndex, 0);
-        }
-        // Ensure focus for keyboard
-        editor.focus();
-        snow.focus();
-      }, 50); // Increased delay to ensure Quill has processed the click
-    }
-    // Call the original handler
-    updateToolbarFromCell(e);
-  }, { capture: true });
-  
-  // Stop marking as in table cell when clicking outside
-  document.addEventListener('click', function(e) {
-    if (!e.target.closest('td')) {
-      isInTableCell = false;
-      // Remove focus and selection classes from ALL cells when clicking outside
-      document.querySelectorAll('td').forEach(c => {
-        c.classList.remove('ql-cell-focused');
-        c.classList.remove('ql-cell-selected');
-        c.classList.remove('ql-cell-selected-after');
-      });
-    }
-  }, { capture: true });
-  
-  // Prevent document blur when in table cell
-  document.addEventListener('blur', function(e) {
-    if (isInTableCell && (e.target === editor || e.target === snow.root)) {
-      console.log('Prevented document blur while in table cell');
-      e.preventDefault();
-      e.stopPropagation();
-      editor.focus();
-      snow.focus();
-    }
-  }, { capture: true });
+
+  // Add this to prevent toolbar repositioning on toolbar interaction
+  document.querySelector('.ql-toolbar').addEventListener('mousedown', function(e) {
+    window.preventToolbarReposition = true;
+  });
+
+  document.querySelector('.ql-toolbar').addEventListener('mouseup', function(e) {
+    window.preventToolbarReposition = false;
+  });
   
   editor.addEventListener('touchend', function(e) {
     const cell = e.target.closest('td');
     if (cell) {
-      // Don't stop propagation - let normal touch handling occur
-      
-      // Remove focus and conflicting selection classes from ALL cells
-      document.querySelectorAll('td').forEach(c => {
-        c.classList.remove('ql-cell-focused');
-        c.classList.remove('ql-cell-selected');
-        c.classList.remove('ql-cell-selected-after');
-      });
-      
-      // Add focus class ONLY to clicked cell
-      cell.classList.add('ql-cell-focused');
-      console.log('Cell focused (touchend):', cell);
-      
-      // Mark that we're in a table cell
+      // Don't manipulate classes here - let table-menus.ts handle it properly
+      // Don't call focus here - table-menus.ts will do it with proper timing
+      // Just set the flag
       isInTableCell = true;
-      
-      // Ensure cursor positioning inside cell after Quill processes the touch
-      setTimeout(() => {
-        const cellBlot = Quill.find(cell);
-        if (cellBlot) {
-          const cellIndex = snow.getIndex(cellBlot);
-          // Set cursor to beginning of cell content
-          snow.setSelection(cellIndex, 0);
-        }
-        // Ensure focus for keyboard
-        editor.focus();
-        snow.focus();
-      }, 50); // Increased delay to ensure Quill has processed the touch
     }
-    // Call the original handler
-    updateToolbarFromCell(e);
+    // Don't call updateToolbarFromCell - table-menus.ts handles toolbar updates
   }, { capture: true });
 
-  // All cell handling is done in the main event listeners above
+  
 
 
   (function () {
@@ -3277,6 +3448,16 @@ Quill.register('modules/findAndReplace', FindAndReplace);
             selection.removeAllRanges();
           }
         }, 500); // 500ms for long-press
+
+        // For table cells, ensure they get proper focus on touch
+        // This helps iOS devices understand the cell should be interactive
+        // if (typeof window !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent)) {
+        //   // Add a subtle visual feedback for touch
+        //   cell.style.backgroundColor = 'rgba(0, 123, 255, 0.1)';
+        //   setTimeout(() => {
+        //     cell.style.backgroundColor = '';
+        //   }, 100);
+        // }
       }
     }, { passive: false });
 
@@ -3294,41 +3475,127 @@ Quill.register('modules/findAndReplace', FindAndReplace);
       }
     });
 
-    // Handle text changes
-    snow.on('text-change', function (delta, oldDelta, source) {
-      // Only process user-initiated changes
-      if (source !== 'user') return;
-
-      // Check if we're adding text (typing)
-      if (delta.ops && delta.ops.some(op => op.insert)) {
-        const range = snow.getSelection();
-        if (!range) return;
-
-        // Handle deselected formats only for the newly inserted text
-        Object.keys(userDeselectedFormats).forEach(format => {
-          if (userDeselectedFormats[format]) {
-            console.log(`Applying ${format} format removal to new text only`);
-
-            // Only apply to the current cursor position/selection
-            // This ensures we don't affect previously formatted text
-            snow.format(format, false);
-          }
-        });
-      }
-
-      // Send content to native app (preserve this functionality)
-      sendContentToNativeApp();
-
-    });
     
   })();
+  
+ // Precise text positioning handler - Maps DOM click position to Quill index
+// This enables clicking at exact positions within text (e.g., between words)
+window.handlePreciseTextPositioning = function handlePreciseTextPositioning(e) {
+   // Handle precise positioning for both regular text and table cells
+  console.log('handlePreciseTextPositioning: Running for all content types');
+  
+  // Initialize window.lastCalculatedCursorPosition at the start
+  // Use a sentinel value to distinguish "not set" from "position is 0"
+  window.lastCalculatedCursorPosition = undefined;
+  window.lastCalculatedCursorPositionSet = false;
+  
+  const { clientX: clickX, clientY: clickY } = e;
 
+  // Check if click is on a table cell
+  const cell = e.target.closest('td, th');
+  if (cell) {
+    // For table cells: Get Quill's native selection that's already set by the click
+    // Quill automatically sets the selection when you click - we just need to capture it
+    console.log('handlePreciseTextPositioning: Click on table cell detected');
+    
+    try {
+      // CRITICAL: We need to wait for Quill to process the click before reading selection
+      // Use a longer delay to ensure all events have fired
+      setTimeout(() => {
+        // Get Quill's native selection that was set by the click
+        const nativeSelection = snow.getSelection();
+        console.log('handlePreciseTextPositioning: Quill native selection after delay:', nativeSelection);
+        
+        if (nativeSelection && nativeSelection.index !== null && nativeSelection.index !== undefined) {
+          // Store the exact clicked position from Quill
+          window.lastCalculatedCursorPosition = nativeSelection.index;
+          window.lastCalculatedCursorPositionSet = true;
+          console.log('handlePreciseTextPositioning: ✅ Stored EXACT clicked position from Quill:', nativeSelection.index);
+        } else {
+          console.warn('handlePreciseTextPositioning: ❌ No valid selection from Quill, selection is:', nativeSelection);
+          // If we still can't get a valid selection, don't store anything
+          // Let the fallback handle it
+          window.lastCalculatedCursorPositionSet = false;
+        }
+      }, 50);  // Increased from 0 to 50ms to ensure all events complete
+    } catch (error) {
+      console.warn('Click positioning error for table cell:', error);
+    }
+    return;
+  }
+}
+
+   // Capture clicks using the capture phase (runs before regular handlers)
+  document.getElementById('editor').addEventListener('click', function (event) {
+     // Skip if clicking on the find panel
+    const findPanel = document.getElementById('find-replace-panel');
+    if (findPanel && findPanel.contains(event.target)) {
+      return;
+    }
+    
+    // Skip if search is in progress
+    if (window.isSearchInProgress) {
+      console.log('Search in progress, preventing selection');
+      event.preventDefault();  // ADD THIS LINE
+      event.stopPropagation();  // ADD THIS LINE
+      return;
+    }
+    // Skip if scroll is already in progress
+    if (scrollInProgress) {
+      console.log('Scroll in progress, ignoring click');
+      return;
+    }
+
+    // Get the exact click coordinates
+    const clickX = event.clientX;
+    const clickY = event.clientY;
+
+    // Get the editor container and Quill instance
+    const editorContainer = document.getElementById('editor');
+    const quill = Quill.find(editorContainer);
+
+    if (!quill) return;
+
+    // Use caretRangeFromPoint to get the precise text position
+    try {
+      const range = document.caretRangeFromPoint(clickX, clickY);
+      if (range && range.startContainer) {
+        // Create a temporary range to work with
+        const nativeRange = document.createRange();
+        nativeRange.setStart(range.startContainer, range.startOffset);
+        nativeRange.collapse(true);
+
+        // Set the native selection to our position
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(nativeRange);
+
+        // Give Quill a moment to update its selection based on our native selection
+        setTimeout(() => {
+          // Get the current selection from Quill
+          const quillSelection = quill.getSelection();
+          if (quillSelection) {
+            console.log('Quill selection after click:', quillSelection);
+
+            // Use our helper function to adjust scroll
+            adjustScrollForSelection(quillSelection.index, editorContainer, quill);
+          }
+        }, 10);
+      }
+    } catch (e) {
+      console.log('Error in click handling:', e);
+    }
+
+    // Don't stop the event from propagating - let Quill handle selection
+  }, true); // true = capture phase, runs before regular handlers
+
+  // Remove any other click handlers to avoid conflicts
+  console.log('iOS-optimized click-to-scroll handler installed');
 
   // Add keyboard detection for iOS with fixed height
   let currentKeyboardHeight = 0;
   let isKeyboardVisible = false;
   let lastKnownKeyboardHeight = 390; // Fixed iOS keyboard height
-  let scrollInProgress = false;
 
   // Function to adjust scroll for a given selection index
   function adjustScrollForSelection(index, editorContainer, quill) {
@@ -3356,8 +3623,8 @@ Quill.register('modules/findAndReplace', FindAndReplace);
     // iOS-specific offset to position text higher (increased for better visibility)
     const iosOffset = isIOS ? 100 : 0;
 
-    // Calculate target scroll position
-    const targetScrollTop = cursorPosition - (adjustedViewportHeight / 2) + (lineHeight / 2) + iosOffset;
+    // cursorPosition (bounds.top) is relative to viewport, so add current scrollTop to get absolute position
+    const targetScrollTop = editorContainer.scrollTop + cursorPosition - (adjustedViewportHeight / 2) + (lineHeight / 2) + iosOffset;
 
     console.log('Scroll calculation:', {
       viewportHeight,
@@ -3458,12 +3725,61 @@ Quill.register('modules/findAndReplace', FindAndReplace);
       // For non-iOS, simple direct scroll
       editorContainer.scrollTop = Math.max(0, targetScrollTop);
       scrollInProgress = false;
-      // Ensure the editor is focused
       if (!window.isSearchPanelOpen) {
-        snow.focus();
-      }
+            quill.focus();
+          }
     }
   }
+
+// IMMEDIATE ATTACHMENT: Attach handlePreciseTextPositioning in CAPTURE phase
+// This ensures it runs BEFORE other click handlers (like snow.root listener)
+// Capture phase runs before bubble phase, so precise positioning happens first
+editor.addEventListener('click', handlePreciseTextPositioning, true);
+
+
+// // Keep existing document-level listeners
+// function handleDocumentClick(e) {
+//   // Reset cell editing flag when clicking outside table cells
+//   if (!e.target.closest('td')) {
+//     window.isActivelyCellEditing = false;
+//     console.log('Reset isActivelyCellEditing flag - clicked outside table');
+//   }
+// }
+
+// function handleDocumentBlur(e) {
+//   // Only reset if we're actually leaving the editor entirely
+//   // Don't reset on temporary blur events (like toolbar interactions)
+//   if (e.target === editor || e.target === snow.root) {
+//     // Add a longer delay to allow selection processing to complete
+//     setTimeout(() => {
+//       const activeElement = document.activeElement;
+      
+//       // Check if focus went to a table cell - don't reset flag in that case
+//       const isInTableCell = activeElement?.closest('td, th') !== null;
+//       if (isInTableCell) {
+//         console.log('Blur event: Focus still in table cell, keeping isActivelyCellEditing=true');
+//         // User is still in a table cell, keep the flag set
+//         window.isActivelyCellEditing = true;
+//         return;
+//       }
+      
+//       // Only reset if focus went somewhere outside the editor
+//       if (activeElement !== editor && 
+//           activeElement !== snow.root && 
+//           !editor.contains(activeElement)) {
+//         console.log('Blur event: Resetting isActivelyCellEditing flag - editor lost focus');
+//         window.isActivelyCellEditing = false;
+//         console.log('Reset isActivelyCellEditing flag - editor lost focus');
+//       } else {
+//         console.log('Blur event: Focus still within editor, not resetting flag');
+//       }
+//     }, 150); // Increased from 50ms to 150ms to allow selection processing
+//   }
+// }
+
+// document.addEventListener('click', handleDocumentClick, true);
+// document.addEventListener('blur', handleDocumentBlur, true);
+
 
    // Standalone search function with arrow key navigation
     class EditorSearch {
@@ -3747,20 +4063,20 @@ Quill.register('modules/findAndReplace', FindAndReplace);
         });
         
         // Clear highlights when selection changes (user moves cursor)
-        // this.quill.on('selection-change', (range, oldRange, source) => {
-        //   // Only clear if user manually changed selection and search is active
-        //   if (source === 'user' && this.isActive && range) {
-        //     // Check if the selection change was not caused by our search navigation
-        //     const isSearchNavigation = this.matches.some(match => 
-        //       range.index === match.index && range.length === match.length
-        //     );
+        this.quill.on('selection-change', (range, oldRange, source) => {
+          // Only clear if user manually changed selection and search is active
+          if (source === 'user' && this.isActive && range) {
+            // Check if the selection change was not caused by our search navigation
+            const isSearchNavigation = this.matches.some(match => 
+              range.index === match.index && range.length === match.length
+            );
             
-        //     if (!isSearchNavigation) {
-        //       console.log('[EditorSearch] User changed selection - clearing search');
-        //       this.clearSearch();
-        //     }
-        //   }
-        // });
+            if (!isSearchNavigation) {
+              console.log('[EditorSearch] User changed selection - clearing search');
+              this.clearSearch();
+            }
+          }
+        });
       }
   
       /**
