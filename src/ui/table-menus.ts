@@ -75,7 +75,7 @@ interface Menu {
 }
 
 interface CustomMenu extends Menu {
-  name: 'column' | 'row' | 'table' |  'wrap' | 'delete' | 'copy';
+  name: 'column' | 'row' | 'wrap' | 'delete' | 'copy';
 }
 
 interface MenusDefaults {
@@ -248,19 +248,19 @@ function getMenusConfig(useLanguage: UseLanguageHandler, menus?: string[]): Menu
         // }
       }
     },
-    table: {
-      content: useLanguage('tblProps'),
-      icon: tableIcon,
-      handler(list: HTMLUListElement, tooltip: HTMLDivElement) {
-        const attribute = {
-          ...getElementStyle(this.table, TABLE_PROPERTIES),
-          'align': this.getTableAlignment(this.table)
-        };
-        this.toggleAttribute(list, tooltip);
-        this.tablePropertiesForm = new TablePropertiesForm(this, { attribute, type: 'table' });
-        this.hideMenus();
-      }
-    },
+    // table: {
+    //   content: useLanguage('tblProps'),
+    //   icon: tableIcon,
+    //   handler(list: HTMLUListElement, tooltip: HTMLDivElement) {
+    //     const attribute = {
+    //       ...getElementStyle(this.table, TABLE_PROPERTIES),
+    //       'align': this.getTableAlignment(this.table)
+    //     };
+    //     this.toggleAttribute(list, tooltip);
+    //     this.tablePropertiesForm = new TablePropertiesForm(this, { attribute, type: 'table' });
+    //     this.hideMenus();
+    //   }
+    // },
     // cell: {
     //   content: useLanguage('cellProps'),
     //   icon: cellIcon,
@@ -1117,6 +1117,7 @@ class TableMenus {
   }
 
   handleClick(e: MouseEvent) {
+    console.log("e.detail",e.detail);
      // Add detection for double-tap/double-click
     if (e.detail === 2) {
       // For double-taps, only allow text selection
@@ -1240,7 +1241,11 @@ class TableMenus {
         // this.quill.focus(); // Removed: Focus called before selection setup was causing timing conflicts
         this.showMenus();
         
-        // STEP 3: Set the cell selection (this will apply ql-cell-focused class)
+        // STEP 3: Do NOT clear deselection flags when clicking a new cell
+        // Deselection is a GLOBAL user preference that persists across all cells
+        // When user deselects bold, it should stay deselected everywhere until they reselect it
+        
+        // STEP 4: Set the cell selection (this will apply ql-cell-focused class)
         // Get the calculated cursor position from handlePreciseTextPositioning if available
         const calculatedPosition = (window as any).lastCalculatedCursorPosition;
         console.log('🔍 TABLE-MENUS: Calculated position from handlePreciseTextPositioning:', calculatedPosition);
@@ -1260,80 +1265,150 @@ class TableMenus {
         // STEP 5: Update toolbar with actual cell formats
         setTimeout(() => {
           const range = this.quill.getSelection();
+          console.log("range", range);
           if (!range || range.index === null || range.index === undefined) return;
+          
+          // FIRST: Check if cell has actual content (using innerText which is most reliable)
+          const cellText = (tdElement as HTMLElement).innerText || '';
+          const hasContent = cellText.replace(/\u200B/g, '').trim().length > 0;
+          console.log("🔍 TABLE-MENUS: Cell text check - isCellEmpty:", hasContent, "cellText:", cellText);
           
           // Get the ACTUALLY CLICKED CELL (tdElement), not from getTable()[2]
           const clickedCellBlot = Quill.find(tdElement) as any;
           let formats: any = {};
           
-          // STEP 1: Try to get formats from the clicked cell
           if (clickedCellBlot) {
-            formats = this.tableBetter.getCellTextFormats(clickedCellBlot);
-            console.log("🔍 TABLE-MENUS: Formats from clicked cell:", formats);
-          }
-          
-          // STEP 2: If clicked cell is empty, search the table for any cell with formats
-          if (Object.keys(formats).length === 0) {
-            const cellLength = clickedCellBlot?.length?.() || 0;
-            if (cellLength <= 1) {
-              console.log("🔍 TABLE-MENUS: Clicked cell is empty, searching table for formatted cells...");
+            // Get formats from the clicked cell
+            const cellFormats = this.tableBetter.getCellTextFormats(clickedCellBlot);
+            // REQUIREMENT: Remove formats from userDeselectedFormats if they're already active in this cell
+            // If a format is applied to the cell content, it shouldn't be in the deselected list
+            this.tableBetter.removeDeselectedFormatsIfActive(cellFormats);
+            
+            if (hasContent) {
+              // NON-EMPTY CELL: Use actual cell formats
+              formats = { ...cellFormats};
+            } else {
+              // EMPTY CELL: Priority order for format inheritance
+              // 1. FormatManager.globalFormats (HIGHEST - what user selected in toolbar)
+              // 2. Previous cell formats (FALLBACK - for formats not in globalFormats)
+              // Get global formats from FormatManager (what user selected in toolbar)
+              const globalFormats = this.tableBetter.formatManager.getGlobalFormats();
               
-              // Get all cells in the table
-              const table = this.table;
-              if (table) {
-                const cells = table.querySelectorAll('td, th');
+              // Start with global formats as base (highest priority)
+              formats = { ...globalFormats };
+              
+              // Get previous cell element
+              const table = tdElement.closest('table');
+              const cells = table ? Array.from(table.querySelectorAll('td, th')) : [];
+              const currentIndex = cells.indexOf(tdElement);
+              const prevCell = currentIndex > 0 ? cells[currentIndex - 1] : null;
+              
+              if (prevCell) {
+                // Read font directly from DOM skipping empty spans
+                const rockwellSpan = prevCell.querySelector('[class*="ql-font-"]:not(:empty)') 
+                  || Array.from(prevCell.querySelectorAll('[class*="ql-font-"]'))
+                     .find((el: Element) => {
+                       const text = el.textContent?.replace(/\u200B/g, '').trim() || '';
+                       return text.length > 0;
+                     });
                 
-                // Search for the first cell with formats
-                for (const cell of cells) {
-                  const cellBlot = Quill.find(cell) as any;
-                  if (cellBlot) {
-                    const cellFormats = this.tableBetter.getCellTextFormats(cellBlot);
-                    if (Object.keys(cellFormats).length > 0) {
-                      formats = { ...cellFormats };
-                      console.log("🔍 TABLE-MENUS: Found formatted cell in table, using formats:", formats);
-                      break;
-                    }
+                if (rockwellSpan) {
+                  const fontClass = Array.from(rockwellSpan.classList)
+                    .find((c: string) => c.startsWith('ql-font-'));
+                  if (fontClass) {
+                    formats.font = fontClass.replace('ql-font-', '');
+                    console.log("🔍 TABLE-MENUS: Read font from previous cell DOM:", formats.font);
                   }
                 }
+                
+                // Read size from inline style or class
+                const styledEl = prevCell.querySelector('[style*="font-size"]') ||
+                  prevCell.querySelector('[class*="ql-size-"]:not(:empty)') ||
+                  Array.from(prevCell.querySelectorAll('[class*="ql-size-"]'))
+                    .find((el: Element) => {
+                      const text = el.textContent?.replace(/\u200B/g, '').trim() || '';
+                      return text.length > 0;
+                    });
+                
+                if (styledEl) {
+                  const htmlEl = styledEl as HTMLElement;
+                  if (htmlEl.style?.fontSize) {
+                    formats.size = htmlEl.style.fontSize;
+                  } else {
+                    const sizeClass = Array.from(styledEl.classList)
+                      .find((c: string) => c.startsWith('ql-size-'));
+                    if (sizeClass) {
+                      formats.size = sizeClass.replace('ql-size-', '');
+                    }
+                  }
+                  console.log("🔍 TABLE-MENUS: Read size from previous cell DOM:", formats.size);
+                }
               }
-            }
-          }
-          
-          // STEP 3: If still no formats found, check editor's current font and size
-          if (Object.keys(formats).length === 0) {
-            console.log("🔍 TABLE-MENUS: No table formats found, checking editor state...");
-            
-            const editorFormats = this.quill.getFormat(range.index);
-            console.log("🔍 TABLE-MENUS: Editor formats:", editorFormats);
-            
-            // Extract only font and size from editor
-            if (editorFormats.font) {
-              formats.font = editorFormats.font;
-              console.log("🔍 TABLE-MENUS: Applied editor font:", editorFormats.font);
-            }
-            if (editorFormats.size) {
-              formats.size = editorFormats.size;
-              console.log("🔍 TABLE-MENUS: Applied editor size:", editorFormats.size);
-            }
-            
-            // If editor has no font/size, use defaults
-            if (!formats.font && !formats.size) {
-              console.log("🔍 TABLE-MENUS: No editor formats, using defaults");
-              formats = editorFormats; // Use all editor formats as fallback
+              
+              // CRITICAL: Global formats ALWAYS have highest priority - override everything
+              // This ensures FormatManager.globalFormats is respected for ALL formats including font/size
+              formats = { ...formats, ...globalFormats };
+              console.log("🔍 TABLE-MENUS: Final formats after global override:", formats);
+              
+              // Try lastAppliedFormats as fallback for inline formats only
+              const lastApplied = this.tableBetter.getLastAppliedFormats();
+              
+              if (Object.keys(lastApplied).length > 0) {
+                // Only merge inline formats from lastApplied (font/size already handled by DOM reading)
+                const mergedFormats = { ...formats };
+                
+                const inlineFormats = ['bold', 'italic', 'underline', 'strike'];
+                inlineFormats.forEach(format => {
+                  if (lastApplied[format] !== undefined && !globalFormats[format]) {
+                    mergedFormats[format] = lastApplied[format];
+                    console.log(`🔍 TABLE-MENUS: Inherited inline format ${format} from lastApplied:`, lastApplied[format]);
+                  }
+                });
+                
+                formats = mergedFormats;
+              }
+              
+              // IMPORTANT: Only remove inline deselected formats from empty cell
+              // Font and size are structural formats that should ALWAYS be preserved
+              const deselectedFormats = this.tableBetter.formatManager.getDeselectedFormats();
+              const deselectedInlineFormats = ['bold', 'italic', 'underline', 'strike'];
+              Object.keys(deselectedFormats).forEach(format => {
+                if (deselectedFormats[format] && deselectedInlineFormats.includes(format)) {
+                  delete formats[format];
+                }
+              });
             }
           }
           
           // Filter out table metadata
           delete formats['table-cell-block'];
           delete formats['table-cell'];
+
+          this.tableBetter.updateToolbarUI(formats, hasContent);
           
-          console.log('🔍 TABLE-MENUS: Final formats for toolbar:', formats);
-          this.tableBetter.updateToolbarUI(formats);
+          // Update toolbar using consolidated sync function
+          if ((window as any).syncCellToolbar) {
+            (window as any).syncCellToolbar(formats);
+          }
         }, 150);
 
-        // STEP 6: Scroll cell into view (centered in viewport)
+        // STEP 6: Scroll cell and cursor into view using adjustScrollForSelection
         setTimeout(() => {
-          tdElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          const editor = document.getElementById('editor');
+          const currentSelection = this.quill.getSelection();
+          
+          if (editor && currentSelection && typeof window !== 'undefined' && (window as any).adjustScrollForSelection) {
+            console.log('🔍 TABLE-MENUS: Using adjustScrollForSelection for table cell');
+            (window as any).adjustScrollForSelection(currentSelection.index, editor, this.quill);
+          } else {
+            // Fallback: Use scrollIntoView if adjustScrollForSelection is not available
+            const rect = tdElement.getBoundingClientRect();
+            const isVisible = rect.top >= 0 && rect.bottom <= window.innerHeight;
+            
+            if (!isVisible) {
+              tdElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+          }
         }, 100);
         
       }
@@ -1373,22 +1448,22 @@ class TableMenus {
     }
     
     // Handle iOS keyboard visibility restoration - immediate approach for older iOS
-    if (keyboardLikelyVisible && hasSelection && currentSelectedTds[0]?.isConnected) {
-      // Use version-aware keyboard restoration
-      if (typeof window !== 'undefined' && (window as any).shouldRestoreKeyboardOnCellSwitch) {
-        const shouldRestore = (window as any).shouldRestoreKeyboardOnCellSwitch();
-        if (shouldRestore) {
-          console.log('🔍 Older iOS detected - immediately restoring keyboard focus');
+    // if (keyboardLikelyVisible && hasSelection && currentSelectedTds[0]?.isConnected) {
+    //   // Use version-aware keyboard restoration
+    //   if (typeof window !== 'undefined' && (window as any).shouldRestoreKeyboardOnCellSwitch) {
+    //     const shouldRestore = (window as any).shouldRestoreKeyboardOnCellSwitch();
+    //     if (shouldRestore) {
+    //       console.log('🔍 Older iOS detected - immediately restoring keyboard focus');
 
-          // Immediately restore focus for older iOS - no delay needed
-          // On older iOS, the keyboard doesn't automatically reopen when focus changes
-          requestAnimationFrame(() => {
-            console.log('🔍 Executing keyboard focus restoration');
-            this.quill.focus();
-          });
-        }
-      }
-    }
+    //       // Immediately restore focus for older iOS - no delay needed
+    //       // On older iOS, the keyboard doesn't automatically reopen when focus changes
+    //       requestAnimationFrame(() => {
+    //         console.log('🔍 Executing keyboard focus restoration');
+    //         this.quill.focus();
+    //       });
+    //     }
+    //   }
+    // }
   }
 
   hideMenus() {
@@ -1469,9 +1544,6 @@ class TableMenus {
       const isLast = td.parentElement.lastChild.isEqualNode(td);
       const position = offset > 0 ? right : left;
       
-      // Get the formats from the current cell to apply to new cells
-      const cellFormats = getCellFormats(tdBlot);
-      
       // Track existing cells before insertion to identify newly created ones
       const existingCells = new Set(Array.from(this.table?.querySelectorAll('td, th') || []));
       
@@ -1479,7 +1551,7 @@ class TableMenus {
       tableBlot.insertColumn(position, isLast, width, offset);
       
       // Apply formats to newly inserted cells
-      if (cellFormats && cellFormats[0]) {
+      // if (cellFormats && cellFormats[0]) {
         const allCellsAfterInsertion = Array.from(this.table?.querySelectorAll('td, th') || []);
         const newCells = allCellsAfterInsertion.filter(cell => !existingCells.has(cell));
         
@@ -1492,7 +1564,7 @@ class TableMenus {
             }
           }
         });
-      }
+      // }
       this.quill.scrollSelectionIntoView();
       
       // After column insertion, just refresh the table selection state
@@ -1608,9 +1680,6 @@ class TableMenus {
       
       const isTh = tdBlot.statics.blotName === TableTh.blotName;
       
-      // Get the formats from the current cell to apply to new cells
-      const cellFormats = getCellFormats(tdBlot);
-      
       // Track existing cells before insertion to identify newly created ones
       const existingCells = new Set(Array.from(this.table?.querySelectorAll('td, th') || []));
       
@@ -1627,22 +1696,31 @@ class TableMenus {
       } else {
         tableBlot.insertRow(index + offset, offset, isTh);
       }
+      console.log()
       
-      // Apply formats ONLY to newly inserted cells in the row
-      if (cellFormats && cellFormats[0]) {
-        const allCellsAfterInsertion = Array.from(this.table?.querySelectorAll('td, th') || []);
-        const newCells = allCellsAfterInsertion.filter(cell => !existingCells.has(cell));
+      // Apply formats to ALL newly inserted cells in the row
+      // This ensures consistent formatting across all new cells
+      const allCellsAfterInsertion = Array.from(this.table?.querySelectorAll('td, th') || []);
+      const newCells = allCellsAfterInsertion.filter(cell => !existingCells.has(cell));
+      
+      console.log('🔍 INSERT-ROW: Applying formats to', newCells.length, 'new cells');
+      
+      // Simply call applyFormatOnEmptyCell for each new cell
+      // This ensures all cells get the current active formatting consistently
+      newCells.forEach((cell: any, index: number) => {
+        console.log(`🔍 INSERT-ROW: Applying format to new cell ${index + 1}/${newCells.length}`, cell);
         
-        newCells.forEach((cell: any) => {
-          const cellBlot: any = Quill.find(cell) as TableCell;
-          if (cellBlot) {
-            // Use applyFormatOnEmptyCell instead of direct format application
-            if (typeof window !== 'undefined' && (window as any).applyFormatOnEmptyCell) {
-              (window as any).applyFormatOnEmptyCell(cell, false);
-            }
+        if (typeof window !== 'undefined' && (window as any).applyFormatOnEmptyCell) {
+          try {
+            (window as any).applyFormatOnEmptyCell(cell, false);
+            console.log(`🔍 INSERT-ROW: Successfully applied format to cell ${index + 1}`);
+          } catch (error) {
+            console.error(`🔍 INSERT-ROW: Failed to apply format to cell ${index + 1}:`, error);
           }
-        });
-      }
+        } else {
+          console.warn('🔍 INSERT-ROW: applyFormatOnEmptyCell not available');
+        }
+      });
       
       this.quill.scrollSelectionIntoView();
       
@@ -1833,7 +1911,11 @@ class TableMenus {
     // Check if we're showing a dropdown (not hiding)
     const isShowing = list.classList.contains('ql-hidden');
     
+    // Flag to track whether the table menu is currently open
+    // This is used to prevent the menu from being closed when the user interacts with the table
+    // while the menu is still open
     if (isShowing) {
+      (window as any).isTableMenuOpen = true;
       // REMOVED: this.quill.blur() - This was clearing the selection!
       
       list.classList.remove('ql-hidden');
@@ -1851,6 +1933,7 @@ class TableMenus {
         }
       }
     } else {
+      (window as any).isTableMenuOpen = false; // Clear the flag when the menu closes to allow other interactions
       // When hiding, restore focus to the previously selected cell
       list.classList.add('ql-hidden');
       tooltip.classList.remove('ql-table-tooltip-hidden');
@@ -2040,8 +2123,6 @@ class TableMenus {
       return null;
     }
   }
-
-
 }
 
 export default TableMenus;

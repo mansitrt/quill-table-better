@@ -138,6 +138,27 @@ class TableToolbar extends Toolbar {
       }
       e.preventDefault();
     }
+    
+    // TRACK USER DESELECTIONS: When user deselects a format (value = false),
+    // mark it so it won't be reapplied on next cell click
+    const tableModule = this.getTableBetter();
+    if (value === false && tableModule) {
+      console.log(`🔍 TOOLBAR: User deselected format: ${format}`);
+      // Use FormatManager to toggle format off (deselect)
+      tableModule.formatManager.toggleGlobalFormat(format, false);
+      console.log(`🔍 TOOLBAR: Deselected format via FormatManager: ${format}`);
+    } else if (value !== false && tableModule) {
+      // When user applies a format (value = true or other truthy value),
+      // update the global format state so it will appear on next cell click
+      console.log(`🔍 TOOLBAR: User applied format: ${format}`);
+      // Use FormatManager to toggle format on (select)
+      if (value === true || (typeof value === 'string' && value)) {
+        // User is applying a format
+        tableModule.formatManager.toggleGlobalFormat(format, value);
+        console.log(`🔍 TOOLBAR: Applied format via FormatManager - ${format}:`, value);
+      }
+    }
+    
     this.quill.focus();
     const [range] = this.quill.selection.getRange();
     if (this.handlers[format] != null) {

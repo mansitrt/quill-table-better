@@ -6,7 +6,7 @@
   "types": "dist/types/index.d.ts",
   "scripts": {
     "dev": "webpack-dev-server --config config/webpack.dev.js",
-    "build": "webpack --config config/webpack.prod.js && rm dist/quill-table-better",
+    "build": "webpack --config config/webpack.prod.js && rm dist/quill-table-better && cp dist/quill-table-better.js src/quill-table-better.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {

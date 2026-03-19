@@ -843,6 +843,20 @@ setSelectedTds(selectedTds: Element[]) {
   if (cellBlot) {
     const cellIndex = this.quill.getIndex(cellBlot);
     this.quill.setSelection(cellIndex, 0, Quill.sources.SILENT);
+    
+    // Apply global formats to empty cells
+    const cellText = (singleCell as HTMLElement).innerText || '';
+    const hasContent = cellText.replace(/\u200B/g, '').trim().length > 0;
+    
+    if (!hasContent) {
+      // Cell is empty - apply global formats
+      const globalFormats = this.tableBetter.formatManager.getFormatsForNewCell();
+      if (Object.keys(globalFormats).length > 0) {
+        console.log('🔍 CELL-SELECTION: Applying global formats to empty cell:', globalFormats);
+        // Apply formats to the empty cell
+        this.quill.formatText(cellIndex, 1, globalFormats, Quill.sources.SILENT);
+      }
+    }
   }
 }
 
