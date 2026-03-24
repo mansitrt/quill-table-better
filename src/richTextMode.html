@@ -2538,6 +2538,82 @@
     }
   }
   registerPickers(toolbarSelectors, snow);
+  // Track consecutive Enter presses for list exit functionality
+  let consecutiveEnterCount = 0;
+  let lastEnterTime = 0;
+  const ENTER_TIMEOUT = 1000; // 1 second timeout for double Enter
+
+
+  // Function to renumber ordered lists after insertion
+  function renumberOrderedList() {
+    const range = snow.getSelection();
+    if (!range) return;
+    
+    const [line] = snow.getLine(range.index);
+    if (!line || line.statics.blotName !== 'list') return;
+    
+    // Find the parent list container
+    const listElement = line.domNode.closest('ol');
+    if (!listElement) return; // Only renumber ordered lists
+    
+    // Force Quill to update the list by triggering a format change
+    // This helps Quill recalculate the list numbering
+    const listBlot = Quill.find(listElement);
+    if (listBlot) {
+      // Get the current list format
+      const currentFormat = snow.getFormat(range.index);
+      
+      // Temporarily remove and reapply the list format to force renumbering
+      snow.formatText(range.index, 1, 'list', false, Quill.sources.SILENT);
+      
+      // Reapply the list format with the same type
+      setTimeout(() => {
+        snow.formatText(range.index, 1, 'list', currentFormat.list || 'ordered', Quill.sources.SILENT);
+        console.log('🔍 LIST: Forced renumbering of ordered list');
+      }, 10);
+    }
+  }
+
+  // ─── List Enter Handler Function ─────────────────────────────────────────────
+function handleListEnter(event, range) {
+  const [line] = snow.getLine(range.index);
+  if (line?.statics?.blotName !== 'list') return false; // Not a list — skip
+
+  const now = Date.now();
+  if (now - lastEnterTime > ENTER_TIMEOUT) consecutiveEnterCount = 0;
+  consecutiveEnterCount++;
+  lastEnterTime = now;
+
+  const isEmptyListItem = line.domNode?.textContent?.trim().length === 0;
+
+  // Double Enter on empty list item → exit list
+  if (consecutiveEnterCount === 2 && isEmptyListItem) {
+    event.preventDefault();
+
+    snow.formatLine(range.index, 1, 'list', false, Quill.sources.USER);
+    snow.formatLine(range.index, 1, 'indent', false, Quill.sources.USER);
+
+    // Delete ghost <p><br></p> after </ol> or </ul>
+    setTimeout(() => {
+      snow.root.querySelectorAll('p').forEach(p => {
+        const prev = p.previousElementSibling;
+        if (
+          p.textContent.trim() === '' &&
+          (p.innerHTML.trim() === '<br>' || p.innerHTML.trim() === '') &&
+          (prev?.tagName === 'OL' || prev?.tagName === 'UL')
+        ) p.remove();
+      });
+    }, 0);
+
+    consecutiveEnterCount = 0;
+    return true; // Handled — skip rest
+  }
+
+  // Normal Enter inside list → renumber
+  setTimeout(() => renumberOrderedList(), 100);
+  return false; // Not fully handled — continue normal Enter flow
+}
+
   // Listen for the backspace key
   document.addEventListener("keydown", (event) => {
      // CRITICAL: Clear deselected formats BEFORE any character is inserted
@@ -2596,6 +2672,28 @@
       if (handleTableCellBackspace(event, snow)) {
         return; // If handled by table handler, skip other handlers
       }
+      
+      // ADDED: Handle backspace in list items to fix Bug 4
+      const range = snow.getSelection();
+      if (range) {
+        const [line] = snow.getLine(range.index);
+        const isListItem = line && line.statics.blotName === 'list';
+        
+        if (isListItem) {
+          // Check if we're at the beginning of a list item
+          const lineText = line ? line.domNode?.textContent?.trim() || '' : '';
+          const isAtBeginning = range && range.index === (line ? snow.getIndex(line) : 0);
+          
+          // If backspace at beginning of list item or will affect list structure
+          if (isAtBeginning || lineText.length === 0) {
+            // Schedule renumbering after the backspace operation completes
+            setTimeout(() => {
+              renumberOrderedList();
+            }, 50);
+          }
+        }
+      }
+      
       // First check for empty line case
       // if (handleBackspaceOnEmptyLine(snow, event)) {
       //   // If the empty line case was handled, we're done
@@ -2610,18 +2708,28 @@
     }
     else if (event.key === "Enter") {
       isKeyboardOperation = true;
-      // Handle Enter key to update toolbar immediately with preserved formatting
+      // Update toolbar for all other Enter presses
       setTimeout(() => {
-        // Get the current selection
-        const range = snow.getSelection();
-        if (range) {
-          // Get the current formats at cursor position
-          const formats = snow.getFormat(range.index, range.length);
-          // Update the toolbar with these formats
-          updateToolbarUI(formats);
+        const newRange = snow.getSelection();
+        if (newRange) {
+          updateToolbarUI(snow.getFormat(newRange.index, newRange.length));
           isKeyboardOperation = false;
         }
       }, 50);
+
+
+      const range = snow.getSelection();
+      if (range) {
+        // Handle list Enter — if fully handled, skip rest
+        if (handleListEnter(event, range)) {
+          setTimeout(() => {
+            const newRange = snow.getSelection();
+            if (newRange) updateToolbarUI(snow.getFormat(newRange.index, newRange.length));
+            isKeyboardOperation = false;
+          }, 50);
+          return;
+        }
+      }
     }
   }, { capture: true, passive: false });
 
