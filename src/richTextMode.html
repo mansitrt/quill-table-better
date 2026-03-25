@@ -131,6 +131,34 @@
     display: none !important;
     pointer-events: none !important;
   }
+
+  /* Dynamic List Marker Alignment */
+  /* Make the li a flex row with centered alignment */
+  .ql-editor li[data-list="ordered"],
+  .ql-editor li[data-list="bullet"] {
+    display: flex !important;
+    align-items: center !important;  /* KEY: overrides Quill's default "start" */
+    padding-left: 0 !important;
+  }
+
+  /* The counter/bullet marker */
+  .ql-editor li[data-list="ordered"] > .ql-ui:before,
+  .ql-editor li[data-list="bullet"] > .ql-ui:before {
+    font-size: var(--marker-font-size, 13px) !important;
+    line-height: 1 !important;
+    align-self: center !important;   /* centers within flex row */
+    flex-shrink: 0 !important;
+    margin-top: 0 !important;        /* remove margin-top, not needed */
+  }
+
+  /* The content span inside li */
+  .ql-editor li[data-list="ordered"] > .ql-ui ~ *,
+  .ql-editor li[data-list="ordered"] > span:not(.ql-ui),
+  .ql-editor li[data-list="bullet"] > .ql-ui ~ *,
+  .ql-editor li[data-list="bullet"] > span:not(.ql-ui) {
+    flex: 1;
+    line-height: 1.42 !important;
+  }
 </style>
 
 <!-- Include Quill stylesheet -->
@@ -810,6 +838,112 @@
   const table = snow.getModule('table-better');
   const editorContainer = document.getElementById('editor-container');
   const editor = document.getElementById('editor');
+
+  // ============================================================================
+  // DYNAMIC LIST MARKER ALIGNMENT SYSTEM
+  // ============================================================================
+  // Ensures list markers (bullets and numbers) remain vertically centered
+  // relative to content regardless of font size or font family changes
+  
+  // Quill's size values → actual px values
+  // Supports both 'pt' and 'pts' formats
+  const QUILL_SIZE_MAP = {
+    '10pt': 10, '10pts': 10,
+    '11pt': 11, '11pts': 11,
+    '12pt': 12, '12pts': 12,
+    '13pt': 13, '13pts': 13,
+    '14pt': 14, '14pts': 14,
+    '16pt': 16, '16pts': 16,
+    '18pt': 18, '18pts': 18,
+    '20pt': 20, '20pts': 20,
+    '24pt': 24, '24pts': 24,
+    '28pt': 28, '28pts': 28,
+    '32pt': 32, '32pts': 32,
+    '36pt': 36, '36pts': 36,
+    '48pt': 48, '48pts': 48,
+    'false': 13,   // Quill default (no size class = 13px)
+    null: 13,
+    undefined: 13,
+  };
+
+  /**
+   * Calculate and apply dynamic marker alignment based on Quill size value
+   * @param {string} quillSize - The Quill size value (e.g., "10pt", "24pt")
+   */
+  function updateListMarkerAlignment(quillSize) {
+    try {
+      // Get all list items first
+      const listItems = document.querySelectorAll(
+        '.ql-editor li[data-list="ordered"], .ql-editor li[data-list="bullet"]'
+      );
+      
+      // 🛑 Skip if no list items — avoids spam on every keystroke
+      if (listItems.length === 0) return;
+
+      // Resolve pt value from map
+      let sizeInPt = 13; // default
+      if (quillSize) {
+        const mapped = QUILL_SIZE_MAP[String(quillSize).toLowerCase()];
+        if (mapped) {
+          sizeInPt = mapped;
+        } else if (String(quillSize).endsWith('px')) {
+          // If it's already px, convert back to pt
+          sizeInPt = parseFloat(quillSize) / 1.333;
+        } else if (String(quillSize).endsWith('pt')) {
+          // Extract numeric value
+          sizeInPt = parseFloat(quillSize);
+        }
+      }
+
+      // Convert pt to px (1pt = 1.333px)
+      const sizeInPx = sizeInPt * 1.333;
+      
+      console.log(`[ListMarker] size="${quillSize}" → ${sizeInPt}pt → ${sizeInPx.toFixed(2)}px applied to ${listItems.length} items`);
+
+      // Apply CSS variable to all list items
+      // No margin-top needed - using flex align-items: center instead
+      listItems.forEach(li => {
+        li.style.setProperty('--marker-font-size', `${sizeInPx.toFixed(2)}px`);
+      });
+    } catch (error) {
+      console.error('[ListMarker] Error updating marker alignment:', error);
+    }
+  }
+
+  /**
+   * Get the current size at cursor position and update markers
+   */
+  function updateMarkersFromCurrentFormat() {
+    const range = snow.getSelection();
+    if (!range) return;
+    
+    const formats = snow.getFormat(range.index);
+    const currentSize = formats.size || '13pt'; // Default to 13pt if no size
+    updateListMarkerAlignment(currentSize);
+  }
+
+  /**
+   * Watch for font size changes and update markers accordingly
+   */
+  function setupListMarkerWatcher() {
+    // Listen for selection-change to catch format changes
+    snow.on('selection-change', (range, oldRange, source) => {
+      if (range) {
+        requestAnimationFrame(() => {
+          updateMarkersFromCurrentFormat();
+        });
+      }
+    });
+
+    // Initial update on page load
+    setTimeout(() => {
+      updateMarkersFromCurrentFormat();
+    }, 100);
+  }
+
+  // Initialize the list marker alignment system
+  setupListMarkerWatcher();
+  // ============================================================================
 
   // REFACTORED: Minimal font/size picker handling
   const toolbar = snow.getModule('toolbar');
