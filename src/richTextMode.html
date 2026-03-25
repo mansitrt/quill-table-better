@@ -825,7 +825,7 @@
       table: false,
       'table-better': {
         toolbarTable: true,
-        menus: ['column', 'row', 'wrap', 'delete'],
+        menus: ['column', 'row', 'table', 'wrap', 'delete'],
       },
       toolbar: '#toolbar',
       findAndReplace: true
@@ -1802,7 +1802,8 @@
         tableModule.formatManager.toggleGlobalFormat('size', selectedSize);
         console.log('🎨 TOOLBAR: Size selection updated in FormatManager:', selectedSize);
       }
-      
+            // Update list marker alignment immediately when size changes
+      updateListMarkerAlignment(selectedSize);
       snow.blur(); // Blur first
       snow.focus(); // Refocus after ensuring blur has applied
       snow.setSelection(index, length); // Restore selection
