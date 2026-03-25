@@ -198,13 +198,13 @@ function getMenusConfig(useLanguage: UseLanguageHandler, menus?: string[]): Menu
               return;
             }
             
-            const { leftTd } = selectedInfo;
-            if (!leftTd || !leftTd.isConnected) {
-              console.error('Cannot insert row: leftTd is invalid or disconnected');
+            const { topTd } = selectedInfo;
+            if (!topTd || !topTd.isConnected) {
+              console.error('Cannot insert row: topTd is invalid or disconnected');
               return;
             }
             
-            this.insertRow(leftTd, 0);
+            this.insertRow(topTd, -1);
             this.updateMenus();
           }
         },
@@ -224,13 +224,13 @@ function getMenusConfig(useLanguage: UseLanguageHandler, menus?: string[]): Menu
               return;
             }
             
-            const { rightTd } = selectedInfo;
-            if (!rightTd || !rightTd.isConnected) {
-              console.error('Cannot insert row: rightTd is invalid or disconnected');
+            const { bottomTd } = selectedInfo;
+            if (!bottomTd || !bottomTd.isConnected) {
+              console.error('Cannot insert row: bottomTd is invalid or disconnected');
               return;
             }
             
-            this.insertRow(rightTd, 1);
+            this.insertRow(bottomTd, 1);
             this.updateMenus();
           }
         },
@@ -338,6 +338,9 @@ class TableMenus {
   private cellBeforeDropdown: HTMLElement | null = null;
   private isDropdownOpen = false;
   lastCellClickTime = 0;
+  lastMenuShowTime = 0; // Track when menu was last shown to prevent immediate hide
+  isProgrammaticScroll = false; // Flag to prevent menu hide during programmatic scroll (cell tap scroll)
+  isScrollingToCell = false; // Flag to prevent double scroll - allow only one scroll mechanism
   constructor(quill: Quill, tableBetter?: QuillTableBetter) {
     this.quill = quill;
     this.table = null;
@@ -404,6 +407,115 @@ class TableMenus {
     }
     
     this.root = this.createMenus();
+    
+    // SAFE FIX: Use Quill's selection-change event to detect when cursor moves outside table
+    // This is safe because it doesn't touch any mouse/touch events that could break cursor behavior
+    // It only listens to Quill's own internal selection changes
+    this.quill.on('selection-change', (range: any, oldRange: any, source: string) => {
+      // Skip during programmatic scroll from cell tap
+      if (this.isProgrammaticScroll) {
+        console.log('🔍 SELECTION-CHANGE: Programmatic scroll active, skipping hide check');
+        return;
+      }
+      
+      // Skip during scrolling to cell
+      if (this.isScrollingToCell) {
+        console.log('🔍 SELECTION-CHANGE: Scrolling to cell, skipping hide check');
+        return;
+      }
+      
+      // If editor lost focus entirely, hide menu
+      if (!range) {
+        console.log('🔍 SELECTION-CHANGE: Editor lost focus, hiding menu');
+        this.hideMenus();
+        this.tableBetter.cellSelection.clearSelected();
+        return;
+      }
+      
+      // Check if new selection is inside a table cell
+      // Wrapped in try/catch to fail silently and never break cursor behavior
+      try {
+        const [leaf] = this.quill.getLeaf(range.index);
+        const domNode = leaf?.domNode as HTMLElement;
+        const isInTable = domNode?.closest('td') !== null
+                       || domNode?.closest('th') !== null
+                       || domNode?.closest('table') !== null;
+        
+        if (!isInTable) {
+          console.log('🔍 SELECTION-CHANGE: Selection moved outside table, hiding menu');
+          this.hideMenus();
+          this.tableBetter.cellSelection.clearSelected();
+        }
+      } catch (e) {
+        // Fail silently - never crash cursor behavior
+        console.log('🔍 SELECTION-CHANGE: Error checking table position, ignoring');
+          this.hideMenus();
+          this.tableBetter.cellSelection.clearSelected();
+      }
+    });
+
+    // CRITICAL FIX: Listen to text-change event to hide menu when user types outside table
+    // This catches typing that doesn't move the cursor (selection-change won't fire)
+    // Uses Quill blot index range instead of DOM traversal (more reliable on iOS)
+    this.quill.on('text-change', (delta: any, oldDelta: any, source: string) => {
+      if (source !== 'user') return;
+      
+      // Menu already hidden — nothing to do
+      if (this.root.classList.contains('ql-hidden')) return;
+      
+      // No table reference — safe to hide
+      if (!this.table) {
+        this.hideMenus(true);
+        return;
+      }
+      
+      try {
+        // Get change position from delta
+        let changeIndex = 0;
+        if (delta.ops) {
+          for (const op of delta.ops) {
+            if (op.retain) changeIndex += op.retain;
+            else break;
+          }
+        }
+        
+        // Use Quill's blot system to get table's start/end index
+        // This is far more reliable than DOM leaf traversal on iOS
+        const tableBlot = this.quill.scroll.find(this.table);
+        if (!tableBlot) {
+          console.log('🔍 TEXT-CHANGE: Table blot not found, hiding menu');
+          this.hideMenus(true);
+          this.tableBetter.cellSelection.clearSelected();
+          return;
+        }
+        
+        const tableStart = this.quill.getIndex(tableBlot);
+        const tableEnd = tableStart + tableBlot.length();
+        
+        const isInTable = changeIndex >= tableStart && changeIndex <= tableEnd;
+        
+        console.log('🔍 TEXT-CHANGE: changeIndex', changeIndex, 'tableStart', tableStart, 'tableEnd', tableEnd, 'isInTable', isInTable);
+        
+        if (!isInTable) {
+          console.log('🔍 TEXT-CHANGE: Typing outside table, hiding menu');
+          this.hideMenus(true);
+          this.tableBetter.cellSelection.clearSelected();
+        }
+      } catch (e) {
+        console.log('🔍 TEXT-CHANGE: Error -', e);
+        // Don't hide on error — better to leave visible than wrongly hide
+      }
+    });
+    
+    // Add document-level click listener to hide menus when clicking outside the table
+    document.addEventListener('click', this.handleDocumentClick.bind(this), true);
+    
+    // Add touchstart listener for mobile devices (fires before click)
+    // This ensures menu hides immediately on touch, not after 300ms click delay
+    document.addEventListener('touchstart', this.handleDocumentClick.bind(this), { capture: true, passive: true });
+    
+    // Add scroll listener to hide menus when scrolling outside the table
+    document.addEventListener('scroll', this.handleDocumentScroll.bind(this), true);
   }
 
   isPerformingTableOperation = false;
@@ -662,6 +774,14 @@ class TableMenus {
       sizePickerLabel.classList.add("ql-active");
       sizePickerLabel.setAttribute('data-value', `${defaultSize}`);
     }
+
+    // With this:
+    this.isDropdownOpen = false; // ← force reset dropdown state first
+    this.hideMenus(true);        // ← then hide with full style cleanup
+    
+    // Reset scroll flags
+    this.isScrollingToCell = false;
+    this.isProgrammaticScroll = false;
   }
 
 
@@ -894,47 +1014,42 @@ class TableMenus {
   }
 
   getSelectedTdsInfo() {
-    let { startTd, endTd } = this.tableBetter.cellSelection;
+    // PRIMARY: Use lastClickedCell — most reliable, set directly on tap
+    let startTd = this.tableBetter.lastClickedCell as HTMLElement;
+    let endTd = this.tableBetter.cellSelection?.endTd as HTMLElement;
 
-    // Validate and reconnect startTd if necessary
+    // Validate startTd
     if (!startTd || !startTd.isConnected) {
-      console.log('startTd is disconnected, attempting to reconnect...');
-      startTd = this.reconnectCellReference(startTd as HTMLElement);
-      if (startTd) {
-        console.log('Successfully reconnected startTd');
-      } else {
-        console.warn('Failed to reconnect startTd, finding fallback cell');
-        // Fallback: use first selected cell if available
-        if (this.tableBetter.cellSelection.selectedTds.length > 0) {
-          startTd = this.tableBetter.cellSelection.selectedTds[0];
-          if (!startTd.isConnected) {
-            startTd = this.reconnectCellReference(startTd as HTMLElement);
-          }
-        }
-        // Last resort: find any valid cell in the table
-        if (!startTd || !startTd.isConnected) {
-          const table = this.table;
-          if (table) {
-            startTd = table.querySelector('td, th') as HTMLElement;
-          }
+      console.log('lastClickedCell invalid, falling back to cellSelection.startTd');
+      startTd = this.tableBetter.cellSelection?.startTd as HTMLElement;
+      
+      if (!startTd || !startTd.isConnected) {
+        console.log('cellSelection.startTd invalid, attempting reconnect...');
+        startTd = this.reconnectCellReference(startTd as HTMLElement);
+      }
+
+      if (!startTd || !startTd.isConnected) {
+        console.log('Reconnect failed, trying selectedTds...');
+        // Last resort: selectedTds
+        const selected = this.tableBetter.cellSelection?.selectedTds;
+        if (selected?.length > 0 && selected[0].isConnected) {
+          startTd = selected[0] as HTMLElement;
+          console.log('Using first selectedTd');
         }
       }
     }
 
-    // Validate and reconnect endTd if necessary
+    // Validate endTd
     if (!endTd || !endTd.isConnected) {
-      console.log('endTd is disconnected, attempting to reconnect...');
+      console.log('endTd invalid, attempting reconnect...');
       endTd = this.reconnectCellReference(endTd as HTMLElement);
-      if (endTd) {
-        console.log('Successfully reconnected endTd');
-      } else {
-        console.warn('Failed to reconnect endTd, using startTd as fallback');
-        endTd = startTd;
+      if (!endTd || !endTd.isConnected) {
+        console.log('endTd reconnect failed, using startTd as fallback');
+        endTd = startTd; // fallback to startTd
       }
     }
 
-    // If we still don't have valid cells, return null
-    if (!startTd || !endTd || !startTd.isConnected || !endTd.isConnected) {
+    if (!startTd || !startTd.isConnected) {
       console.error('Unable to find valid cells for table operation');
       return null;
     }
@@ -942,20 +1057,17 @@ class TableMenus {
     const startCorrectBounds = getCorrectBounds(startTd, this.quill.container);
     const endCorrectBounds = getCorrectBounds(endTd, this.quill.container);
     const computeBounds = getComputeBounds(startCorrectBounds, endCorrectBounds);
-    if (
-      startCorrectBounds.left <= endCorrectBounds.left &&
-      startCorrectBounds.top <= endCorrectBounds.top
-    ) {
-      return {
-        computeBounds,
-        leftTd: startTd,
-        rightTd: endTd
-      };
-    }
+
+    // Determine geometric left/right and top/bottom cells separately
+    const isStartTop  = startCorrectBounds.top  <= endCorrectBounds.top;
+    const isStartLeft = startCorrectBounds.left <= endCorrectBounds.left;
+
     return {
       computeBounds,
-      leftTd: endTd,
-      rightTd: startTd
+      leftTd:   isStartLeft ? startTd : endTd,
+      rightTd:  isStartLeft ? endTd   : startTd,
+      topTd:    isStartTop  ? startTd : endTd,
+      bottomTd: isStartTop  ? endTd   : startTd,
     };
   }
 
@@ -1236,31 +1348,50 @@ class TableMenus {
         // Track when cell was clicked for scroll prevention
         this.lastCellClickTime = Date.now();
         
-        // STEP 2: Show the table menu FIRST to prevent iOS from triggering duplicate selection calls
-        // This ensures showMenus() doesn't try to restore selection when we already have it
-        // this.quill.focus(); // Removed: Focus called before selection setup was causing timing conflicts
-        this.showMenus();
+        // CRITICAL FIX: Ensure editor is focused IMMEDIATELY and SYNCHRONOUSLY
+        // This is essential for first-tap guarantee after keyboard dismissal
+        // We do this BEFORE setSelectedTds to ensure Quill is ready
+        // Check multiple conditions to handle all blur states
+        const isEditorFocused = document.activeElement === this.quill.root;
+        const isEditorEnabled = this.quill.isEnabled && this.quill.isEnabled();
         
-        // STEP 3: Do NOT clear deselection flags when clicking a new cell
+        if (!isEditorFocused || !isEditorEnabled) {
+          console.log('🔍 HANDLECLICK: Editor not focused/enabled, restoring state');
+          console.log('  - isEditorFocused:', isEditorFocused);
+          console.log('  - isEditorEnabled:', isEditorEnabled);
+          
+          // Enable editor if disabled (happens after keyboard "Done" button)
+          if (!isEditorEnabled) {
+            this.quill.enable(true);
+            console.log('🔍 HANDLECLICK: Editor enabled');
+          }
+          
+          // Focus editor synchronously (not via requestAnimationFrame)
+          this.quill.focus();
+          console.log('🔍 HANDLECLICK: Editor focused synchronously');
+        }
+        
+        // STEP 2: Set the cell selection FIRST (this will apply ql-cell-focused class immediately)
+        // This ensures the blue highlight appears on first tap
+        this.tableBetter.cellSelection.setSelectedTds([tdElement as HTMLElement]);
+        
+        // NOTE: Do NOT show menu here - it will be shown ONLY once after scroll completes
+        // This prevents the menu from flashing at the wrong position before scroll
+        // The menu will be shown in updateMenus() after scrollend event fires with fresh coordinates
+        
+        // STEP 4: Do NOT clear deselection flags when clicking a new cell
         // Deselection is a GLOBAL user preference that persists across all cells
         // When user deselects bold, it should stay deselected everywhere until they reselect it
         
-        // STEP 4: Set the cell selection (this will apply ql-cell-focused class)
-        // Get the calculated cursor position from handlePreciseTextPositioning if available
+        // STEP 5: Get the calculated cursor position from handlePreciseTextPositioning if available
         const calculatedPosition = (window as any).lastCalculatedCursorPosition;
         console.log('🔍 TABLE-MENUS: Calculated position from handlePreciseTextPositioning:', calculatedPosition);
-        
-        // Pass the calculated position to setSelectedTds so cursor appears at clicked location
-        this.tableBetter.cellSelection.setSelectedTds([tdElement as HTMLElement]);
         
         // Clear the stored position after using it
         (window as any).lastCalculatedCursorPosition = undefined;
         
-        // STEP 4: Focus the editor AFTER all selection setup is complete
-        requestAnimationFrame(() => {
-          console.log('🔍 TABLE-MENUS: Calling quill.focus()');
-          this.quill.focus();
-        });
+        // NOTE: Focus was already called synchronously before setSelectedTds()
+        // No need to call it again here - that would be redundant and could cause race conditions
         
         // STEP 5: Update toolbar with actual cell formats
         setTimeout(() => {
@@ -1269,9 +1400,16 @@ class TableMenus {
           if (!range || range.index === null || range.index === undefined) return;
           
           // FIRST: Check if cell has actual content (using innerText which is most reliable)
+          // Important: A cell with just a newline (↵) should be considered empty
           const cellText = (tdElement as HTMLElement).innerText || '';
-          const hasContent = cellText.replace(/\u200B/g, '').trim().length > 0;
-          console.log("🔍 TABLE-MENUS: Cell text check - isCellEmpty:", hasContent, "cellText:", cellText);
+          // Remove zero-width spaces, trim whitespace, and check if anything meaningful remains
+          const meaningfulContent = cellText
+            .replace(/\u200B/g, '') // Remove zero-width spaces
+            .replace(/\n/g, '') // Remove newlines
+            .replace(/\r/g, '') // Remove carriage returns
+            .trim();
+          const hasContent = meaningfulContent.length > 0;
+          console.log("🔍 TABLE-MENUS: Cell text check - hasContent:", hasContent, "cellText:", JSON.stringify(cellText), "meaningful:", JSON.stringify(meaningfulContent));
           
           // Get the ACTUALLY CLICKED CELL (tdElement), not from getTable()[2]
           const clickedCellBlot = Quill.find(tdElement) as any;
@@ -1392,23 +1530,40 @@ class TableMenus {
           }
         }, 150);
 
-        // STEP 6: Scroll cell and cursor into view using adjustScrollForSelection
+        // STEP 6: Scroll cell into view using adjustScrollForSelection
+        // Reuses proven scroll logic from HTML file instead of duplicating
         setTimeout(() => {
-          const editor = document.getElementById('editor');
-          const currentSelection = this.quill.getSelection();
-          
-          if (editor && currentSelection && typeof window !== 'undefined' && (window as any).adjustScrollForSelection) {
-            console.log('🔍 TABLE-MENUS: Using adjustScrollForSelection for table cell');
-            (window as any).adjustScrollForSelection(currentSelection.index, editor, this.quill);
-          } else {
-            // Fallback: Use scrollIntoView if adjustScrollForSelection is not available
-            const rect = tdElement.getBoundingClientRect();
-            const isVisible = rect.top >= 0 && rect.bottom <= window.innerHeight;
-            
-            if (!isVisible) {
-              tdElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            }
+          console.log('🔍 TABLE-MENUS: Scrolling cell to center');
+
+          if (this.isScrollingToCell) {
+            console.log('🔍 TABLE-MENUS: Scroll already in progress, skipping');
+            return;
           }
+
+          this.isScrollingToCell = true;
+          this.isProgrammaticScroll = true;
+
+          // Get the editor container (parent of quill.root)
+          const editorContainer = this.quill.root.parentElement || document.getElementById('editor');
+          
+          // Call adjustScrollForSelection if available
+          const selection = this.quill.getSelection();
+          if (selection && editorContainer && (window as any).adjustScrollForSelection) {
+            console.log('🔍 TABLE-MENUS: Calling adjustScrollForSelection with index', selection.index);
+            (window as any).adjustScrollForSelection(selection.index, editorContainer, this.quill);
+          }
+
+          // Reposition menu after scroll settles
+          setTimeout(() => {
+            console.log('🔍 TABLE-MENUS: Scroll complete, repositioning menu');
+            if (table && tdElement.isConnected) {
+              this.updateMenus(table, tdElement as HTMLElement);
+            }
+            this.isScrollingToCell = false;
+            this.isProgrammaticScroll = false;
+            console.log('🔍 TABLE-MENUS: Set isScrollingToCell = false, isProgrammaticScroll = false');
+          }, 250); // enough time for adjustScrollForSelection's internal 100ms + scroll to finish
+
         }, 100);
         
       }
@@ -1466,12 +1621,74 @@ class TableMenus {
     // }
   }
 
-  hideMenus() {
-    // Don't hide menus if a dropdown is currently open
+  handleDocumentClick(e: Event) {
+    const target = e.target as Element;
+    
+    // Don't hide if clicking on the menus themselves
+    if (this.root.contains(target)) {
+      console.log('🔍 HANDLEDOCUMENTCLICK: Click is on menu, not hiding');
+      return;
+    }
+    
+    // Don't hide if clicking on the table properties form
+    if (this.tablePropertiesForm && this.tablePropertiesForm.form && this.tablePropertiesForm.form.contains(target)) {
+      console.log('🔍 HANDLEDOCUMENTCLICK: Click is on table properties form, not hiding');
+      return;
+    }
+    
+    // If clicking ANYWHERE inside ANY table — let handleClick manage it entirely
+    // Don't use this.table here because it may not be set yet (race condition on iOS touchstart)
+    const clickedTable = target.closest('table');
+    if (clickedTable) {
+      console.log('🔍 HANDLEDOCUMENTCLICK: Click is inside a table, letting handleClick manage it');
+      return; // ← Just bail out completely, handleClick will show/hide correctly
+    }
+    
+    // Click is truly outside any table — safe to hide
+    console.log('🔍 HANDLEDOCUMENTCLICK: Click is outside table, hiding menus');
+    this.hideMenus(true); // ← true = also clear inline styles
+    this.tableBetter.cellSelection.clearSelected();
+  }
+
+  handleDocumentScroll(e: Event) {
+    // CRITICAL FIX: Skip ALL hide logic during programmatic scroll
+    // The cell tap triggers scrollIntoView which fires scroll events during animation
+    // We must not hide the menu or check visibility while scroll is in progress
+    if (this.isProgrammaticScroll) {
+      console.log('🔍 HANDLEDOCUMENTSCROLL: Programmatic scroll detected, skipping all hide logic');
+      return;
+    }
+    
+    // Only check "table out of view" for manual user scroll (not programmatic)
+    const target = e.target as Element;
+    if (this.quill.container.contains(target) || target === this.quill.container) {
+      if (this.table && this.table.isConnected) {
+        const tableBounds = this.table.getBoundingClientRect();
+        const containerBounds = this.quill.container.getBoundingClientRect();
+        
+        // If table is completely out of view, hide menus
+        if (tableBounds.bottom < containerBounds.top || tableBounds.top > containerBounds.bottom) {
+          console.log('🔍 HANDLEDOCUMENTSCROLL: Table out of view, hiding menus');
+          this.hideMenus();
+        }
+      }
+    }
+  }
+
+  hideMenus(clearInlineStyles: boolean = false) {
+    // Don't hide if a dropdown is currently open
     if (this.isDropdownOpen) {
       return;
     }
+    // Just add the class — !important in CSS guarantees it beats inline styles
     this.root.classList.add('ql-hidden');
+    // Only clear inline styles when user clicked outside table
+    // Don't clear when called during updateMenus() repositioning flow
+    if (clearInlineStyles) {
+      this.root.style.visibility = '';
+      this.root.style.opacity = '';
+      this.root.style.display = '';
+    }
   }
 
   getDropdownOpen(): boolean {
@@ -1827,21 +2044,19 @@ class TableMenus {
   }
 
   showMenus() {
+    // Just remove the class — updateMenus() will re-apply inline position styles
     this.root.classList.remove('ql-hidden');
-    
-    // If we're on iOS, ensure any active cell selection is maintained
+
+    this.lastMenuShowTime = Date.now();
+    console.log('🔍 SHOWMENUS: Menu shown at', this.lastMenuShowTime);
+
     if (typeof window !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent)) {
       const lastClickedCell = this.tableBetter.lastClickedCell;
-      if (lastClickedCell && lastClickedCell.isConnected && 
+      if (lastClickedCell && lastClickedCell.isConnected &&
           this.tableBetter.cellSelection.selectedTds.length === 0) {
         console.log('showMenus: iOS logic - restoring cell selection');
-        // REMOVED: setSelectedTds call that was causing race conditions
-        // The handleClick method already calls setSelectedTds, so this is redundant
       }
     }
-    
-    // REMOVED: Delayed updateMenus() call that may trigger DOM manipulations clearing selection
-    // The handleClick method already calls updateMenus(), so this is redundant and potentially harmful
   }
 
   splitCell() {
@@ -1990,33 +2205,168 @@ class TableMenus {
 
       // Check if we have a cell to position the menu relative to it
       if (cellToPosition && cellToPosition.isConnected) {
-        const cellBounds = getCorrectBounds(cellToPosition as Element, this.quill.container);
-
-        // Position the menu relative to the cell from the start
-        correctTop = cellBounds.top - height - 10;
-        correctLeft = (cellBounds.left + cellBounds.right - width) >> 1;
-
-        // If the menu would be positioned above the viewport, place it below the cell
-        if (correctTop < 0) {
-          correctTop = cellBounds.bottom + 10;
-          this.root.classList.add('ql-table-triangle-down');
-          this.root.classList.remove('ql-table-triangle-up');
-        } else {
-          this.root.classList.add('ql-table-triangle-up');
-          this.root.classList.remove('ql-table-triangle-down');
-        }
-
-        // Ensure menu doesn't go below the viewport
-        // If menu would be pushed off the bottom, place it above the cell instead
-        if (correctTop + height > containerBounds.height) {
-          correctTop = cellBounds.top - height - 10;
-          if (correctTop < 0) {
-            // If still doesn't fit above, place it at the top of the container
-            correctTop = 10;
+        // CRITICAL FIX: Use viewport-relative coordinates with getBoundingClientRect()
+        // This ensures menu is positioned correctly relative to the visible viewport
+        // Never use document-relative coordinates which cause menu to float mid-table
+        const cellRect = (cellToPosition as HTMLElement).getBoundingClientRect();
+        const menuHeight = height;
+        const menuWidth = width;
+        const safeGap = 6;
+        const viewportHeight = window.innerHeight;
+        const viewportWidth = window.innerWidth;
+        
+        // CRITICAL FIX: Use scrollend event to guarantee positioning ONLY after scroll completes
+        // This prevents stale coordinates from being used during scroll animation
+        // Menu is invisible during scroll, then repositioned and shown only after scroll ends
+        
+        // Hide menu instantly before any scroll
+        this.root.classList.add('ql-hidden');
+        this.root.style.visibility = 'hidden';
+        this.root.style.opacity = '0';
+        console.log('🔍 UPDATEMENUS: Menu hidden before positioning');
+        
+        // Define the repositioning logic that will run after scroll completes
+        const repositionMenuAfterScroll = () => {
+          console.log('🔍 UPDATEMENUS: Scroll ended, repositioning menu with fresh coordinates');
+          
+          // CRITICAL FIX: Make menu renderable but invisible to get real dimensions
+          // Hidden elements return offsetWidth = 0, causing wrong calculations
+          // Remove ql-hidden class but keep visibility hidden and opacity 0
+          this.root.classList.remove('ql-hidden');
+          this.root.style.visibility = 'hidden';
+          this.root.style.opacity = '0';
+          this.root.style.display = 'flex'; // Ensure menu is rendered in DOM
+          
+          // CRITICAL FIX: Use getBoundingClientRect() for measurement, not offsetHeight
+          // offsetHeight returns 0 when element is hidden, but getBoundingClientRect() works
+          // even with visibility:hidden as long as display is not 'none'
+          // Position menu off-screen during measurement to avoid flash
+          this.root.style.top = '-9999px';
+          this.root.style.left = '-9999px';
+          
+          // NOW measure using getBoundingClientRect() - returns real dimensions
+          const menuRect = this.root.getBoundingClientRect();
+          const freshMenuHeight = menuRect.height || 44;
+          const freshMenuWidth = menuRect.width || 280;
+          console.log('🔍 UPDATEMENUS: Menu dimensions measured (height:', freshMenuHeight, 'width:', freshMenuWidth, ')');
+          
+          // Get FRESH cell coordinates AFTER scroll has fully completed
+          const freshCellRect = (cellToPosition as HTMLElement).getBoundingClientRect();
+          console.log('🔍 UPDATEMENUS: Cell bounds (top:', freshCellRect.top, 'bottom:', freshCellRect.bottom, 'left:', freshCellRect.left, ')');
+          
+          let menuTop: number;
+          let menuLeft: number;
+          
+          // CRITICAL: Calculate space needed (full menu height + gap)
+          const safeGap = 8;
+          const spaceNeeded = freshMenuHeight + safeGap;
+          
+          // STEP 1: Position menu above or below the TAPPED CELL
+          // Menu must follow the individual cell, not the table
+          if (freshCellRect.top >= spaceNeeded) {
+            // Enough space above cell - show menu above cell
+            menuTop = freshCellRect.top - freshMenuHeight - safeGap;
+            this.root.classList.add('ql-table-triangle-up');
+            this.root.classList.remove('ql-table-triangle-down');
+            this.root.classList.remove('ql-table-triangle-none');
+            console.log('🔍 UPDATEMENUS: Menu positioned ABOVE cell (cell top:', freshCellRect.top, 'needed:', spaceNeeded, ')');
+          } else {
+            // Not enough space above cell - show menu below cell
+            menuTop = freshCellRect.bottom + safeGap;
+            this.root.classList.add('ql-table-triangle-down');
+            this.root.classList.remove('ql-table-triangle-up');
+            this.root.classList.remove('ql-table-triangle-none');
+            console.log('🔍 UPDATEMENUS: Menu positioned BELOW cell (cell bottom:', freshCellRect.bottom, ')');
           }
-          this.root.classList.add('ql-table-triangle-up');
-          this.root.classList.remove('ql-table-triangle-down');
+          
+          // STEP 2: Clamp vertical position to viewport bounds
+          menuTop = Math.max(
+            safeGap,
+            Math.min(menuTop, viewportHeight - freshMenuHeight - safeGap)
+          );
+          
+          // STEP 3: Align menu horizontally with cell left edge, clamp to viewport
+          menuLeft = freshCellRect.left;
+          if (menuLeft + freshMenuWidth > viewportWidth - safeGap) {
+            menuLeft = viewportWidth - freshMenuWidth - safeGap;
+          }
+          menuLeft = Math.max(safeGap, menuLeft);
+          console.log('🔍 UPDATEMENUS: Menu horizontal position (left:', menuLeft, 'width:', freshMenuWidth, 'viewport:', viewportWidth, ')');
+          
+          // STEP 3: Apply position FIRST, then show menu
+          // This ensures user never sees menu jump or flash at wrong position
+          correctTop = menuTop;
+          correctLeft = menuLeft;
+          
+          setElementProperty(this.root, {
+            left: `${correctLeft}px`,
+            top: `${correctTop}px`
+          });
+          
+          // NOW show menu - position is already set correctly
+          this.root.style.position = 'fixed';
+          this.root.style.visibility = 'visible';
+          this.root.style.opacity = '1';
+          console.log('🔍 UPDATEMENUS: Menu shown at fixed position (top:', correctTop, 'left:', correctLeft, ')');
+        };
+        
+        // Check if scrollend event is supported
+        if ('onscrollend' in window) {
+          console.log('🔍 UPDATEMENUS: Using scrollend event for positioning');
+          
+          // Set flag to prevent scroll listener from hiding menu
+          this.isProgrammaticScroll = true;
+          
+          // CRITICAL FIX: Safety timeout to prevent flag from being stuck
+          // If scroll takes longer than 2s, force reset flag
+          const safetyTimeout = (window as any).setTimeout(() => {
+            console.log('🔍 UPDATEMENUS: Safety timeout triggered - resetting isProgrammaticScroll');
+            this.isProgrammaticScroll = false;
+          }, 2000);
+          
+          // Trigger scroll if needed
+          (cellToPosition as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'center' });
+          
+          // Wait for scrollend event - guaranteed to fire after scroll completes
+          const onScrollEnd = () => {
+            window.removeEventListener('scrollend', onScrollEnd);
+            clearTimeout(safetyTimeout); // Cancel safety timeout
+            this.isProgrammaticScroll = false;
+            repositionMenuAfterScroll();
+          };
+          
+          window.addEventListener('scrollend', onScrollEnd);
+        } else {
+          console.log('🔍 UPDATEMENUS: scrollend not supported, using debounced scroll event');
+          
+          // Fallback for browsers without scrollend support (older iOS WebView)
+          this.isProgrammaticScroll = true;
+          
+          // CRITICAL FIX: Safety timeout to prevent flag from being stuck
+          // If scroll takes longer than 2s, force reset flag
+          const safetyTimeout = (window as any).setTimeout(() => {
+            console.log('🔍 UPDATEMENUS: Safety timeout triggered - resetting isProgrammaticScroll');
+            this.isProgrammaticScroll = false;
+          }, 2000);
+          
+          (cellToPosition as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'center' });
+          
+          let scrollEndTimer: number;
+          const onScroll = () => {
+            clearTimeout(scrollEndTimer);
+            scrollEndTimer = window.setTimeout(() => {
+              // Scroll has been idle 150ms - treat as ended
+              window.removeEventListener('scroll', onScroll);
+              clearTimeout(safetyTimeout); // Cancel safety timeout
+              this.isProgrammaticScroll = false;
+              repositionMenuAfterScroll();
+            }, 150);
+          };
+          
+          (window as any).addEventListener('scroll', onScroll);
         }
+        
+        return;
       } else {
         // Fall back to table-based positioning if no cell is selected
         correctTop = top - height - 10;
@@ -2034,15 +2384,15 @@ class TableMenus {
           this.root.classList.add('ql-table-triangle-down');
           this.root.classList.remove('ql-table-triangle-up');
         }
-      }
-
-      // Ensure the menu stays within the container bounds
-      if (correctLeft < containerBounds.left) {
-        correctLeft = 0;
-        this.root.classList.add('ql-table-triangle-none');
-      } else if (correctLeft + width > containerBounds.right) {
-        correctLeft = containerBounds.right - width;
-        this.root.classList.add('ql-table-triangle-none');
+        
+        // Ensure the menu stays within the container bounds
+        if (correctLeft < containerBounds.left) {
+          correctLeft = 0;
+          this.root.classList.add('ql-table-triangle-none');
+        } else if (correctLeft + width > containerBounds.right) {
+          correctLeft = containerBounds.right - width;
+          this.root.classList.add('ql-table-triangle-none');
+        }
       }
 
       // Apply the position synchronously (no requestAnimationFrame to prevent DOM mutations)
